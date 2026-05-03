@@ -297,22 +297,23 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
         Queue<SupportNode> queue = new ArrayDeque<>();
         int supportCount = 0;
 
-        // Seed: master's immediate neighbors that are active relays
+        // Seed: master's immediate neighbors that are active relays in THIS tree
         for (PrismTowerBlockEntity neighbor : neighborCache) {
             if (neighbor == this) continue;
             BlockPos np = neighbor.getBlockPos();
             if (visited.contains(np)) continue;
-            // Only count powered towers that have joined the tree
             if (neighbor.currentDepth < 0) continue;
-            // Energy check: powered relay must have enough for at least one fire
             if (neighbor.energyStorage.getEnergyStored() < SLAVE_FIRE_COST) continue;
+            // Must belong to this master's tree
+            if (neighbor.masterPos == null || !neighbor.masterPos.equals(masterBlockPos)) continue;
             if (!withinRange(np, masterBlockPos, NEIGHBOR_SCAN_RANGE)) continue;
             visited.add(np);
             queue.add(new SupportNode(np, 1));
             supportCount++;
         }
 
-        // BFS outward, enforcing depth limit
+        // BFS outward: each node must be within range of its parent (not the master),
+        // belong to the same master, and not exceed max depth.
         while (!queue.isEmpty() && supportCount < 100) {
             SupportNode node = queue.poll();
             if (node.depth >= MAX_DEPTH) continue;
@@ -322,10 +323,12 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
             for (PrismTowerBlockEntity nn : currentTE.neighborCache) {
                 BlockPos nnPos = nn.getBlockPos();
                 if (visited.contains(nnPos)) continue;
-                // Only count powered, active relays
                 if (nn.currentDepth < 0) continue;
                 if (nn.energyStorage.getEnergyStored() < SLAVE_FIRE_COST) continue;
-                if (!withinRange(nnPos, masterBlockPos, NEIGHBOR_SCAN_RANGE * 2)) continue;
+                // Must belong to the same master's tree
+                if (nn.masterPos == null || !nn.masterPos.equals(masterBlockPos)) continue;
+                // Must be within range of its parent (the current node), not the master
+                if (!withinRange(nnPos, node.pos, NEIGHBOR_SCAN_RANGE)) continue;
                 visited.add(nnPos);
                 queue.add(new SupportNode(nnPos, node.depth + 1));
                 supportCount++;
@@ -384,11 +387,13 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
                     .min(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
                     .orElse(null);
 
-            // Master election: am I the closest tower to this monster?
+            // Master election: am I the closest powered tower to this monster?
             boolean isMasterPotential = false;
             if (closestMonster != null) {
                 double myDistSq = closestMonster.distanceToSqr(pos.getX(), pos.getY(), pos.getZ());
-                isMasterPotential = be.neighborCache.stream().noneMatch(t -> {
+                isMasterPotential = be.neighborCache.stream()
+                        .filter(t -> t.energyStorage.getEnergyStored() >= MASTER_FIRE_COST)
+                        .noneMatch(t -> {
                     double nDistSq = closestMonster.distanceToSqr(
                             t.getBlockPos().getX(), t.getBlockPos().getY(), t.getBlockPos().getZ());
                     if (Math.abs(nDistSq - myDistSq) < 1.0)
