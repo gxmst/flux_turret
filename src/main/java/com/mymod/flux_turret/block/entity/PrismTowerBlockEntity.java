@@ -5,7 +5,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -290,42 +289,52 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
     }
 
     // --- Deterministic Support Tree Computation ---
-    // Master walks the neighbor graph via BFS to count reachable support towers.
+    // Master walks the neighbor graph via BFS, only counting powered relays
+    // that already self-registered in the tree (depth >= 0).
 
     private int computeSupportTree(Level level, BlockPos masterBlockPos) {
         Set<BlockPos> visited = new HashSet<>();
-        Queue<BlockPos> queue = new ArrayDeque<>();
+        Queue<SupportNode> queue = new ArrayDeque<>();
         int supportCount = 0;
 
-        // Seed: master's immediate neighbors that can see the monster
+        // Seed: master's immediate neighbors that are active relays
         for (PrismTowerBlockEntity neighbor : neighborCache) {
             if (neighbor == this) continue;
             BlockPos np = neighbor.getBlockPos();
             if (visited.contains(np)) continue;
-            // Check distance from neighbor to master
+            // Only count powered towers that have joined the tree
+            if (neighbor.currentDepth < 0) continue;
+            // Energy check: powered relay must have enough for at least one fire
+            if (neighbor.energyStorage.getEnergyStored() < SLAVE_FIRE_COST) continue;
             if (!withinRange(np, masterBlockPos, NEIGHBOR_SCAN_RANGE)) continue;
             visited.add(np);
-            queue.add(np);
+            queue.add(new SupportNode(np, 1));
             supportCount++;
         }
 
-        // BFS outward
-        while (!queue.isEmpty() && supportCount < 100) { // safety cap
-            BlockPos current = queue.poll();
-            BlockEntity be = level.getBlockEntity(current);
+        // BFS outward, enforcing depth limit
+        while (!queue.isEmpty() && supportCount < 100) {
+            SupportNode node = queue.poll();
+            if (node.depth >= MAX_DEPTH) continue;
+            BlockEntity be = level.getBlockEntity(node.pos);
             if (!(be instanceof PrismTowerBlockEntity currentTE)) continue;
 
             for (PrismTowerBlockEntity nn : currentTE.neighborCache) {
                 BlockPos nnPos = nn.getBlockPos();
                 if (visited.contains(nnPos)) continue;
+                // Only count powered, active relays
+                if (nn.currentDepth < 0) continue;
+                if (nn.energyStorage.getEnergyStored() < SLAVE_FIRE_COST) continue;
                 if (!withinRange(nnPos, masterBlockPos, NEIGHBOR_SCAN_RANGE * 2)) continue;
                 visited.add(nnPos);
-                queue.add(nnPos);
+                queue.add(new SupportNode(nnPos, node.depth + 1));
                 supportCount++;
             }
         }
         return supportCount;
     }
+
+    private record SupportNode(BlockPos pos, int depth) {}
 
     private static boolean withinRange(BlockPos a, BlockPos b, int range) {
         return Math.abs(a.getX() - b.getX()) <= range
@@ -352,6 +361,7 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
         }
 
         // --- Latch previous state for sync comparison ---
+        be.lastDepth = be.currentDepth;
         int prevDepth = be.currentDepth;
         int prevTargetType = be.targetType;
         boolean prevFiring = be.isFiring;
@@ -422,29 +432,34 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
                 }
             } else {
                 // === SLAVE LOGIC ===
-                PrismTowerBlockEntity bestParent = be.neighborCache.stream()
-                        .filter(t -> t.getDepth() >= 0 && t.getDepth() < MAX_DEPTH)
-                        .filter(t -> t.getInputCount() < MAX_FANOUT)
-                        .min(Comparator.comparingInt(PrismTowerBlockEntity::getDepth))
-                        .orElse(null);
-
-                if (bestParent != null) {
-                    be.currentDepth = bestParent.getDepth() + 1;
-                    be.masterPos = bestParent.masterPos;
-                    be.targetType = 2;
-                    be.targetPos = bestParent.getBlockPos();
-                    be.targetId = -1;
-                    be.warmupTicks = 0;
-
-                    if (be.attackCooldown <= 0) {
-                        if (be.energyStorage.consumeEnergy(SLAVE_FIRE_COST)) {
-                            be.isFiring = true;
-                            be.lastFireTime = level.getGameTime();
-                            be.attackCooldown = SLAVE_COOLDOWN;
-                        }
-                    }
-                } else {
+                // Must have enough energy to participate as a relay
+                if (be.energyStorage.getEnergyStored() < SLAVE_FIRE_COST) {
                     resetState(be);
+                } else {
+                    PrismTowerBlockEntity bestParent = be.neighborCache.stream()
+                            .filter(t -> t.currentDepth >= 0 && t.currentDepth < MAX_DEPTH)
+                            .min(Comparator.comparingInt(t -> t.currentDepth))
+                            .orElse(null);
+
+                    if (bestParent != null) {
+                        be.currentDepth = bestParent.currentDepth + 1;
+                        be.lastDepth = be.currentDepth;
+                        be.masterPos = bestParent.masterPos;
+                        be.targetType = 2;
+                        be.targetPos = bestParent.getBlockPos();
+                        be.targetId = -1;
+                        be.warmupTicks = 0;
+
+                        if (be.attackCooldown <= 0) {
+                            if (be.energyStorage.consumeEnergy(SLAVE_FIRE_COST)) {
+                                be.isFiring = true;
+                                be.lastFireTime = level.getGameTime();
+                                be.attackCooldown = SLAVE_COOLDOWN;
+                            }
+                        }
+                    } else {
+                        resetState(be);
+                    }
                 }
             }
         } else {
@@ -498,12 +513,7 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
     }
 
     public int getDepth() {
-        return lastDepth;
-    }
-
-    public int getInputCount() {
-        // Kept for compatibility; not used in master's support computation anymore
-        return 0;
+        return currentDepth;
     }
 
     // --- GeckoLib ---
