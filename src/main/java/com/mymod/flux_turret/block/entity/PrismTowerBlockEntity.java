@@ -256,7 +256,7 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
                 eyePos, targetEye,
                 ClipContext.Block.COLLIDER,
                 ClipContext.Fluid.NONE,
-                this));
+                null));
         // If the ray hits a block before reaching the target, no LOS
         if (hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
             double hitDistSq = hitResult.getLocation().distanceToSqr(eyePos);
