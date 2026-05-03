@@ -46,7 +46,6 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
     private static final double MONSTER_SCAN_RANGE = 16.5;
     private static final int NEIGHBOR_SCAN_RANGE = 12;
     private static final int MAX_DEPTH = 6;
-    private static final int MAX_FANOUT = 6;
     private static final int WARMUP_TICKS = 10;
     private static final int MASTER_COOLDOWN = 20;
     private static final int SLAVE_COOLDOWN = 2;
@@ -387,12 +386,13 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
                     .min(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
                     .orElse(null);
 
-            // Master election: am I the closest powered tower to this monster?
+            // Master election: am I the closest powered, LOS-capable tower to this monster?
             boolean isMasterPotential = false;
             if (closestMonster != null) {
                 double myDistSq = closestMonster.distanceToSqr(pos.getX(), pos.getY(), pos.getZ());
                 isMasterPotential = be.neighborCache.stream()
                         .filter(t -> t.energyStorage.getEnergyStored() >= MASTER_FIRE_COST)
+                        .filter(t -> t.isValidTarget(closestMonster, level, t.getBlockPos()))
                         .noneMatch(t -> {
                     double nDistSq = closestMonster.distanceToSqr(
                             t.getBlockPos().getX(), t.getBlockPos().getY(), t.getBlockPos().getZ());
