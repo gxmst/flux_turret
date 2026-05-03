@@ -370,7 +370,8 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
         long prevFireTime = be.lastFireTime;
         int prevSupportCount = be.cachedSupportCount;
 
-        boolean hasEnoughEnergy = be.energyStorage.getEnergyStored() >= MASTER_FIRE_COST;
+        // Minimum operating threshold: enough for one slave relay
+        boolean hasEnoughEnergy = be.energyStorage.getEnergyStored() >= SLAVE_FIRE_COST;
         if (hasEnoughEnergy != be.visualHasEnergy) {
             be.visualHasEnergy = hasEnoughEnergy;
             be.setChanged();
@@ -386,9 +387,10 @@ public class PrismTowerBlockEntity extends BlockEntity implements GeoBlockEntity
                     .min(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
                     .orElse(null);
 
-            // Master election: am I the closest powered, LOS-capable tower to this monster?
+            // Master election: only towers with enough energy for a master fire
+            boolean hasMasterEnergy = be.energyStorage.getEnergyStored() >= MASTER_FIRE_COST;
             boolean isMasterPotential = false;
-            if (closestMonster != null) {
+            if (hasMasterEnergy && closestMonster != null) {
                 double myDistSq = closestMonster.distanceToSqr(pos.getX(), pos.getY(), pos.getZ());
                 isMasterPotential = be.neighborCache.stream()
                         .filter(t -> t.energyStorage.getEnergyStored() >= MASTER_FIRE_COST)
