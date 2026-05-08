@@ -1,5 +1,9 @@
 {
     "block.flux_turret.prism_tower": "Prism Tower",
+    "block.flux_turret.tesla_coil": "Tesla Coil",
+    "block.flux_turret.gatling_turret": "Gatling Turret",
     "item.flux_turret.prism_tower": "Prism Tower",
+    "item.flux_turret.tesla_coil": "Tesla Coil",
+    "item.flux_turret.gatling_turret": "Gatling Turret",
     "itemGroup.flux_turret": "Flux Turret"
 }

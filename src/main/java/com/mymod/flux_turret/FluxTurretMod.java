@@ -1,6 +1,8 @@
 package com.mymod.flux_turret;
 
 import com.mymod.flux_turret.client.renderer.PrismTowerRenderer;
+import com.mymod.flux_turret.client.renderer.GatlingTurretRenderer;
+import com.mymod.flux_turret.client.renderer.TeslaCoilRenderer;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -37,6 +39,8 @@ public class FluxTurretMod {
         @SubscribeEvent
         public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
             event.registerBlockEntityRenderer(ModRegistry.PRISM_TOWER_BE.get(), PrismTowerRenderer::new);
+            event.registerBlockEntityRenderer(ModRegistry.TESLA_COIL_BE.get(), TeslaCoilRenderer::new);
+            event.registerBlockEntityRenderer(ModRegistry.GATLING_TURRET_BE.get(), GatlingTurretRenderer::new);
         }
     }
 }

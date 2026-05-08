@@ -1,0 +1,29 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        " L ",
+        "CRC",
+        "IDI"
+    ],
+    "key": {
+        "L": {
+            "item": "minecraft:lightning_rod"
+        },
+        "C": {
+            "item": "minecraft:copper_block"
+        },
+        "R": {
+            "item": "minecraft:redstone_block"
+        },
+        "I": {
+            "item": "minecraft:iron_block"
+        },
+        "D": {
+            "item": "minecraft:diamond"
+        }
+    },
+    "result": {
+        "item": "flux_turret:tesla_coil",
+        "count": 1
+    }
+}

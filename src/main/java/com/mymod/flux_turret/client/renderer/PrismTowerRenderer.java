@@ -25,11 +25,13 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
             int packedLight, int packedOverlay) {
         this.geckoRenderer.render(be, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
 
+        if (be.getLevel() == null)
+            return;
+
         long timeDiff = be.getLevel().getGameTime() - be.getLastFireTime();
         boolean isFiringWindow = timeDiff >= 0 && timeDiff <= 5;
 
         // Determine target position and laser type
-        Vec3 targetPos = null;
         boolean isSupport = false;
 
         if (be.visualTargetType == 1 && be.visualTargetId != -1) {
@@ -71,9 +73,10 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
             alpha = 210; // Increased Alpha (0.6 -> 0.8)
         } else {
             // Attack Laser: Thick, opaque, strong pulse
-            float pulse = (float) Math.sin(gameTime * 0.5) * 0.05f;
-            float baseWidth = 0.15f + (supportCount * 0.15f);
-            startWidth = baseWidth * 0.5f + pulse;
+            float pulse = (float) Math.sin(gameTime * 0.5) * 0.025f;
+            float supportScale = (float) Math.min(1.0d, Math.log1p(Math.max(0, supportCount)) / Math.log(8.0d));
+            float baseWidth = 0.16f + supportScale * 0.34f;
+            startWidth = baseWidth * 0.45f + pulse;
             endWidth = baseWidth + pulse;
             r = 0;
             g = 255;

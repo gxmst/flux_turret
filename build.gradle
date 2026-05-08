@@ -115,8 +115,6 @@ repositories {
     // Put repositories for dependencies here
     // ForgeGradle automatically adds the Forge maven and Maven Central for you
     maven { url 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/' }
-    maven { url 'https://dl.cloudsmith.io/public/tslat/sbl/maven/' }
-    maven { url 'https://maven.blamejared.com' }
 
     // If you have mod jar dependencies in ./libs, you can declare them as a repository like so.
     // See https://docs.gradle.org/current/userguide/declaring_repositories.html#sub:flat_dir_resolver
@@ -134,14 +132,7 @@ dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
     // GeckoLib 4
-    implementation fg.deobf("software.bernie.geckolib:geckolib-forge-1.20.1:4.4.4")
-
-    // SmartBrainLib
-    implementation fg.deobf("net.tslat.smartbrainlib:SmartBrainLib-forge-1.20.1:1.14")
-
-    // Patchouli
-    compileOnly fg.deobf("vazkii.patchouli:Patchouli:1.20.1-84-FORGE")
-    runtimeOnly fg.deobf("vazkii.patchouli:Patchouli:1.20.1-84-FORGE")
+    implementation fg.deobf("software.bernie.geckolib:geckolib-forge-1.20.1:4.8.3")
 
     // Example mod dependency with JEI - using fg.deobf() ensures the dependency is remapped to your development mappings
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

@@ -20,7 +20,7 @@ public class PrismTowerModel extends GeoModel<PrismTowerBlockEntity> {
 
     @Override
     public ResourceLocation getAnimationResource(PrismTowerBlockEntity animatable) {
-        return null; // No animation file yet, handled by code
+        return new ResourceLocation(FluxTurretMod.MOD_ID, "animations/block/prism_tower.animation.json");
     }
 
     @Override
@@ -29,9 +29,9 @@ public class PrismTowerModel extends GeoModel<PrismTowerBlockEntity> {
         super.setCustomAnimations(animatable, instanceId, animationState);
         CoreGeoBone turret = getAnimationProcessor().getBone("turret");
 
-        // Only rotate when having energy (synced boolean from server)
-        if (turret != null && animatable.visualHasEnergy) {
-            float rotation = (animatable.getLevel().getGameTime() % 360) * (float) (Math.PI / 180f);
+        // Only rotate when powered; FE state is synced through the block entity update tag.
+        if (turret != null && animatable.getLevel() != null && animatable.isVisuallyPowered()) {
+            float rotation = (animatable.getLevel().getGameTime() % 360) * 0.08f;
             turret.setRotY(rotation);
         }
     }

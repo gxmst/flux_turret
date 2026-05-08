@@ -1,0 +1,7 @@
+{
+    "variants": {
+        "": {
+            "model": "flux_turret:block/tesla_coil"
+        }
+    }
+}
