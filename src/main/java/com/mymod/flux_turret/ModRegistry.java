@@ -2,7 +2,6 @@ package com.mymod.flux_turret;
 
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -29,8 +28,6 @@ public class ModRegistry {
                         FluxTurretMod.MOD_ID);
         public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister
                         .create(ForgeRegistries.BLOCK_ENTITY_TYPES, FluxTurretMod.MOD_ID);
-        public static final DeferredRegister<EntityType<?>> ENTITY_TYPES = DeferredRegister
-                        .create(ForgeRegistries.ENTITY_TYPES, FluxTurretMod.MOD_ID);
         public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister
                         .create(Registries.CREATIVE_MODE_TAB, FluxTurretMod.MOD_ID);
 
@@ -82,7 +79,6 @@ public class ModRegistry {
                 BLOCKS.register(eventBus);
                 ITEMS.register(eventBus);
                 BLOCK_ENTITY_TYPES.register(eventBus);
-                ENTITY_TYPES.register(eventBus);
                 CREATIVE_MODE_TABS.register(eventBus);
         }
 }

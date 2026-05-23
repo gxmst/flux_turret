@@ -44,8 +44,8 @@ public class GatlingTurretModel extends GeoModel<GatlingTurretBlockEntity> {
             }
         }
 
-        float spin = animatable.getSpinUp() / 100.0f;
-        float speed = spin <= 0.0f ? 0.0f : 0.35f + spin * 1.25f;
+        float spin = animatable.getSpinUp() / 200.0f;
+        float speed = spin <= 0.0f ? 0.0f : 0.08f + spin * spin * 2.8f;
         float rotation = (animatable.getLevel().getGameTime() % 360) * speed;
         if (left != null)
             left.setRotZ(rotation);

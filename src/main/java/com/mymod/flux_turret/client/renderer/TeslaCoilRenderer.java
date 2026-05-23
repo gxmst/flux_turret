@@ -1,9 +1,9 @@
 package com.mymod.flux_turret.client.renderer;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
 import com.mymod.flux_turret.client.model.TeslaCoilModel;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
@@ -69,7 +69,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
 
                 if (previous != null) {
                     int alpha = strand == 0 ? 150 : 105;
-                    drawBeam(matrix, buffer, previous, point, strand == 0 ? 0.025f : 0.018f,
+                    RenderUtils.drawBeam(matrix, buffer, previous, point, strand == 0 ? 0.025f : 0.018f,
                             120, 175, 255, alpha);
                 }
                 previous = point;
@@ -100,37 +100,9 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
             }
 
             float width = i % 2 == 0 ? 0.07f : 0.045f;
-            drawBeam(matrix, buffer, previous, point, width, 115, 160, 255, 240);
-            drawBeam(matrix, buffer, previous, point, width * 0.35f, 245, 245, 255, 255);
+            RenderUtils.drawBeam(matrix, buffer, previous, point, width, 115, 160, 255, 240);
+            RenderUtils.drawBeam(matrix, buffer, previous, point, width * 0.35f, 245, 245, 255, 255);
             previous = point;
         }
-    }
-
-    private void drawBeam(Matrix4f matrix, VertexConsumer buffer, Vec3 start, Vec3 end, float width,
-            int r, int g, int b, int a) {
-        Vec3 diff = end.subtract(start);
-        if (diff.lengthSqr() < 0.0001)
-            return;
-
-        Vec3 normal = diff.normalize();
-        Vec3 side = normal.cross(new Vec3(0, 1, 0));
-        if (side.lengthSqr() < 0.01)
-            side = normal.cross(new Vec3(1, 0, 0));
-        side = side.normalize().scale(width);
-
-        Vec3 s1 = start.add(side);
-        Vec3 s2 = start.subtract(side);
-        Vec3 e1 = end.add(side);
-        Vec3 e2 = end.subtract(side);
-
-        buffer.vertex(matrix, (float) s1.x, (float) s1.y, (float) s1.z).color(r, g, b, a).endVertex();
-        buffer.vertex(matrix, (float) s2.x, (float) s2.y, (float) s2.z).color(r, g, b, a).endVertex();
-        buffer.vertex(matrix, (float) e2.x, (float) e2.y, (float) e2.z).color(r, g, b, a).endVertex();
-        buffer.vertex(matrix, (float) e1.x, (float) e1.y, (float) e1.z).color(r, g, b, a).endVertex();
-
-        buffer.vertex(matrix, (float) e1.x, (float) e1.y, (float) e1.z).color(r, g, b, a).endVertex();
-        buffer.vertex(matrix, (float) e2.x, (float) e2.y, (float) e2.z).color(r, g, b, a).endVertex();
-        buffer.vertex(matrix, (float) s2.x, (float) s2.y, (float) s2.z).color(r, g, b, a).endVertex();
-        buffer.vertex(matrix, (float) s1.x, (float) s1.y, (float) s1.z).color(r, g, b, a).endVertex();
     }
 }

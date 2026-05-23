@@ -1,6 +1,7 @@
 {
-    "parent": "block/cube_all",
+    "parent": "block/block",
     "textures": {
-        "all": "flux_turret:block/gatling_turret"
-    }
+        "particle": "flux_turret:block/gatling_turret"
+    },
+    "elements": []
 }
