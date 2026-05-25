@@ -1,6 +1,7 @@
 package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
+import com.mymod.flux_turret.TurretConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundEvents;
@@ -11,24 +12,33 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
-    private static final int CAPACITY = 120000;
     private static final int MAX_RECEIVE = 1200;
-    private static final int FIRE_COST = 1400;
-    private static final double TARGET_RANGE = 18.5;
     private static final int WARMUP_TICKS = 8;
     private static final int ATTACK_COOLDOWN = 24;
-    private static final float DAMAGE = 12.0f;
     private static final int TARGET_CACHE_INTERVAL = 8;
 
     private int warmupTicks = 0;
 
     public TeslaCoilBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.TESLA_COIL_BE.get(), pos, state, CAPACITY, MAX_RECEIVE);
+        super(ModRegistry.TESLA_COIL_BE.get(), pos, state, 120000, MAX_RECEIVE);
+    }
+
+    @Override
+    public void registerControllers(software.bernie.geckolib.core.animation.AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new software.bernie.geckolib.core.animation.AnimationController<>(this, "controller", 0, state -> {
+            if (this.isVisuallyPowered()) {
+                if (this.visualCountdown > 0) {
+                    return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.tesla_coil.active"));
+                }
+                return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.tesla_coil.idle"));
+            }
+            return software.bernie.geckolib.core.object.PlayState.STOP;
+        }));
     }
 
     @Override
     protected double getTargetRange() {
-        return TARGET_RANGE;
+        return TurretConfig.TESLA_RANGE.get();
     }
 
     @Override
@@ -48,7 +58,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected int getMinOperatingCost() {
-        return FIRE_COST;
+        return TurretConfig.TESLA_FIRE_COST.get();
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, TeslaCoilBlockEntity be) {
@@ -64,7 +74,20 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
         long prevFireTime = be.lastFireTime;
         boolean prevHasEnergy = be.visualHasEnergy;
 
-        boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= FIRE_COST;
+        if (be.isRedstoneBlocked(level, pos)) {
+            be.targetId = -1;
+            be.isFiring = false;
+            be.warmupTicks = 0;
+            be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.TESLA_FIRE_COST.get();
+            if (be.targetId != prevTargetId || be.isFiring != prevFiring || be.visualHasEnergy != prevHasEnergy) {
+                be.setChanged();
+                level.sendBlockUpdated(pos, state, state, 3);
+            }
+            return;
+        }
+
+        int fireCost = TurretConfig.TESLA_FIRE_COST.get();
+        boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= fireCost;
         be.visualHasEnergy = hasEnoughEnergy;
 
         if (be.attackCooldown > 0)
@@ -81,9 +104,9 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             if (be.attackCooldown <= 0) {
                 be.warmupTicks++;
                 if (be.warmupTicks >= WARMUP_TICKS) {
-                    if (be.getEnergyStorage().consumeEnergy(FIRE_COST)) {
+                    if (be.getEnergyStorage().consumeEnergy(fireCost)) {
                         target.invulnerableTime = 0;
-                        target.hurt(level.damageSources().magic(), DAMAGE);
+                        target.hurt(level.damageSources().magic(), TurretConfig.TESLA_DAMAGE.get().floatValue());
                         level.playSound(null, pos, ModRegistry.TESLA_SHOOT.get(), SoundSource.BLOCKS, 0.75f, 1.0f);
                         be.isFiring = true;
                         be.lastFireTime = level.getGameTime();

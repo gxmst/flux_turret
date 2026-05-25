@@ -1,14 +1,22 @@
 package com.mymod.flux_turret;
 
+import com.mymod.flux_turret.client.TurretConfigScreen;
 import com.mymod.flux_turret.client.renderer.PrismTowerRenderer;
 import com.mymod.flux_turret.client.renderer.GatlingTurretRenderer;
+import com.mymod.flux_turret.client.renderer.GrandCannonRenderer;
 import com.mymod.flux_turret.client.renderer.TeslaCoilRenderer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.BlockItem;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,16 +30,20 @@ public class FluxTurretMod {
     public FluxTurretMod() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
-        // Register the deferred registers to the event bus
+        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, TurretConfig.SPEC);
+
+        ModLoadingContext.get().registerExtensionPoint(
+                ConfigScreenHandler.ConfigScreenFactory.class,
+                () -> new ConfigScreenHandler.ConfigScreenFactory(
+                        (client, parent) -> new TurretConfigScreen(parent)));
+
         ModRegistry.register(modEventBus);
 
-        // Register ourselves for server and other game events we are interested in
         MinecraftForge.EVENT_BUS.register(this);
 
-        // Initialize GeckoLib
         GeckoLib.initialize();
 
-        LOGGER.info("Flux Turret Mod Initialized");
+        LOGGER.info("gxFlux Mod Initialized");
     }
 
     @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
@@ -41,6 +53,22 @@ public class FluxTurretMod {
             event.registerBlockEntityRenderer(ModRegistry.PRISM_TOWER_BE.get(), PrismTowerRenderer::new);
             event.registerBlockEntityRenderer(ModRegistry.TESLA_COIL_BE.get(), TeslaCoilRenderer::new);
             event.registerBlockEntityRenderer(ModRegistry.GATLING_TURRET_BE.get(), GatlingTurretRenderer::new);
+            event.registerBlockEntityRenderer(ModRegistry.GRAND_CANNON_BE.get(), GrandCannonRenderer::new);
+        }
+    }
+
+    @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
+    public static class ClientForgeEvents {
+        @SubscribeEvent
+        public static void onItemTooltip(ItemTooltipEvent event) {
+            if (event.getItemStack().getItem() instanceof BlockItem blockItem) {
+                String blockId = blockItem.getBlock().getDescriptionId()
+                        .replace("block.", "tooltip.");
+                Component tooltip = Component.translatable(blockId);
+                if (tooltip.getString() != null && !tooltip.getString().equals(blockId)) {
+                    event.getToolTip().add(tooltip);
+                }
+            }
         }
     }
 }

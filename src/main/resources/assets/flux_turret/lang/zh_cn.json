@@ -1,0 +1,20 @@
+{
+    "block.flux_turret.prism_tower": "光凌塔",
+    "block.flux_turret.tesla_coil": "特斯拉线圈",
+    "block.flux_turret.gatling_turret": "加特林炮塔",
+    "block.flux_turret.grand_cannon": "巨炮",
+    "item.flux_turret.prism_tower": "光凌塔",
+    "item.flux_turret.tesla_coil": "特斯拉线圈",
+    "item.flux_turret.gatling_turret": "加特林炮塔",
+    "item.flux_turret.grand_cannon": "巨炮",
+    "itemGroup.flux_turret": "gxFlux",
+    "subtitles.flux_turret.gatling_shoot": "加特林炮塔：开火",
+    "subtitles.flux_turret.tesla_shoot": "特斯拉线圈：放电",
+    "subtitles.flux_turret.prism_shoot": "光凌塔：发射",
+    "subtitles.flux_turret.grand_cannon_shoot": "巨炮：开火",
+    "tooltip.flux_turret.gatling_turret": "哒哒哒哒哒！比本大天才发射冰弹还要快！虽然弹幕扁扁的，但是一旦转起来琪露诺就是最强哒！需要稍微预热一下，哼哼~",
+    "tooltip.flux_turret.tesla_coil": "啪嚓啪嚓的闪电！跟冰之妖精的闪光翅膀一样闪亮！虽然打得慢，但被电到绝对会变成冻豆腐！不准说我是笨蛋，本大天才电量满格！",
+    "tooltip.flux_turret.prism_tower": "看我的，完美冻结——不对，是终极七彩大激光！只要把这些亮晶晶的塔摆在一起，它们就会像琪露诺的冰之羽翼一样连起来，变得⑨倍最强！",
+    "tooltip.flux_turret.grand_cannon": "哇！超级超级大的冰块投掷器！能打到地平线那一头！轰的一声就把坏人全部炸飞，而且超级环保，连草地都不会弄脏！这才是本大天才的最强杰作！",
+    "flux_turret.config.title": "gxFlux 配置"
+}

@@ -11,45 +11,49 @@ import software.bernie.geckolib.model.GeoModel;
 public class GatlingTurretModel extends GeoModel<GatlingTurretBlockEntity> {
     @Override
     public ResourceLocation getModelResource(GatlingTurretBlockEntity animatable) {
-        return new ResourceLocation(FluxTurretMod.MOD_ID, "geo/block/gatling_turret.geo.json");
+        return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "geo/block/gatling_turret.geo.json");
     }
 
     @Override
     public ResourceLocation getTextureResource(GatlingTurretBlockEntity animatable) {
-        return new ResourceLocation(FluxTurretMod.MOD_ID, "textures/block/gatling_turret.png");
+        return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "textures/block/gatling_turret.png");
     }
 
     @Override
     public ResourceLocation getAnimationResource(GatlingTurretBlockEntity animatable) {
-        return new ResourceLocation(FluxTurretMod.MOD_ID, "animations/block/gatling_turret.animation.json");
+        return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "animations/block/gatling_turret.animation.json");
     }
 
     @Override
     public void setCustomAnimations(GatlingTurretBlockEntity animatable, long instanceId,
             AnimationState<GatlingTurretBlockEntity> animationState) {
         super.setCustomAnimations(animatable, instanceId, animationState);
-        CoreGeoBone turret = getAnimationProcessor().getBone("turret");
-        CoreGeoBone left = getAnimationProcessor().getBone("barrels_left");
-        CoreGeoBone right = getAnimationProcessor().getBone("barrels_right");
+        CoreGeoBone mount = getAnimationProcessor().getBone("mount");
+        CoreGeoBone gun = getAnimationProcessor().getBone("gun");
+        CoreGeoBone barrelsLeft = getAnimationProcessor().getBone("barrels_left");
+        CoreGeoBone barrelsRight = getAnimationProcessor().getBone("barrels_right");
 
         if (animatable.getLevel() == null)
             return;
 
-        if (turret != null && animatable.visualTargetId != -1) {
+        if (mount != null && gun != null && animatable.visualTargetId != -1) {
             Entity target = animatable.getLevel().getEntity(animatable.visualTargetId);
             if (target != null) {
                 double dx = target.getX() - (animatable.getBlockPos().getX() + 0.5);
+                double dy = target.getEyeY() - (animatable.getBlockPos().getY() + 1.5);
                 double dz = target.getZ() - (animatable.getBlockPos().getZ() + 0.5);
-                turret.setRotY(-(float) Math.atan2(dx, -dz));
+                double dist = Math.sqrt(dx * dx + dz * dz);
+                mount.setRotY(-(float) Math.atan2(dx, -dz));
+                gun.setRotX((float) Math.atan2(dy, dist));
             }
         }
 
         float spin = animatable.getSpinUp() / 200.0f;
-        float speed = spin <= 0.0f ? 0.0f : 0.08f + spin * spin * 2.8f;
-        float rotation = (animatable.getLevel().getGameTime() % 360) * speed;
-        if (left != null)
-            left.setRotZ(rotation);
-        if (right != null)
-            right.setRotZ(-rotation);
+        if (spin > 0) {
+            float speed = 0.08f + spin * spin * 2.8f;
+            float rotation = (animatable.getLevel().getGameTime() % 360) * speed;
+            if (barrelsLeft != null) barrelsLeft.setRotZ(rotation);
+            if (barrelsRight != null) barrelsRight.setRotZ(-rotation);
+        }
     }
 }

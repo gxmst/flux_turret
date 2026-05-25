@@ -1,4 +1,83 @@
 {
     "format_version": "1.8.0",
-    "animations": {}
+    "animations": {
+        "animation.gatling_turret.idle": {
+            "loop": true,
+            "animation_length": 4.0,
+            "bones": {
+                "mount": {
+                    "rotation": {
+                        "0.0": [
+                            0,
+                            -30,
+                            0
+                        ],
+                        "2.0": [
+                            0,
+                            30,
+                            0
+                        ],
+                        "4.0": [
+                            0,
+                            -30,
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        "animation.gatling_turret.active": {
+            "loop": true,
+            "animation_length": 0.2,
+            "bones": {
+                "barrels_left": {
+                    "rotation": {
+                        "0.0": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "0.2": [
+                            0,
+                            0,
+                            -360
+                        ]
+                    }
+                },
+                "barrels_right": {
+                    "rotation": {
+                        "0.0": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "0.2": [
+                            0,
+                            0,
+                            -360
+                        ]
+                    }
+                },
+                "gun": {
+                    "position": {
+                        "0.0": [
+                            0,
+                            0,
+                            0
+                        ],
+                        "0.1": [
+                            0,
+                            0,
+                            0.5
+                        ],
+                        "0.2": [
+                            0,
+                            0,
+                            0
+                        ]
+                    }
+                }
+            }
+        }
+    }
 }

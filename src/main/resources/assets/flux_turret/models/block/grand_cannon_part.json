@@ -1,0 +1,7 @@
+{
+    "parent": "block/block",
+    "textures": {
+        "particle": "flux_turret:block/grand_cannon"
+    },
+    "elements": []
+}

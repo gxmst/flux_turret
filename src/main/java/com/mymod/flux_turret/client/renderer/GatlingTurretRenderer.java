@@ -48,14 +48,16 @@ public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretB
             MultiBufferSource bufferSource) {
         Vec3 bePos = Vec3.atLowerCornerOf(be.getBlockPos());
         Vec3 end = targetWorldPos.subtract(bePos);
-        Vec3 center = new Vec3(0.5, 1.05, 0.5);
+        Vec3 center = new Vec3(0.5, 0.75, 0.5);
         Vec3 aim = new Vec3(end.x - center.x, 0, end.z - center.z);
         if (aim.lengthSqr() < 0.0001)
             aim = new Vec3(0, 0, -1);
         Vec3 forward = aim.normalize();
-        Vec3 side = new Vec3(-forward.z, 0, forward.x).normalize().scale(0.32);
-        Vec3 leftMuzzle = center.add(forward.scale(0.75)).add(side);
-        Vec3 rightMuzzle = center.add(forward.scale(0.75)).subtract(side);
+        Vec3 side = new Vec3(-forward.z, 0, forward.x).normalize().scale(0.25);
+        
+        Vec3 leftMuzzle = center.add(forward.scale(1.5)).add(side);
+        Vec3 rightMuzzle = center.add(forward.scale(1.5)).subtract(side);
+        
         Vec3 direction = end.subtract(center);
         if (direction.lengthSqr() < 0.0001)
             return;
@@ -72,7 +74,8 @@ public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretB
         if (direction.lengthSqr() < 0.0001)
             return;
         Vec3 normal = direction.normalize();
-        Vec3 tracerEnd = muzzle.add(normal.scale(Math.min(3.5, direction.length())));
+        double tracerLen = Math.min(direction.length(), 12.0);
+        Vec3 tracerEnd = muzzle.add(normal.scale(tracerLen));
         RenderUtils.drawBeam(matrix, buffer, muzzle, tracerEnd, 0.022f, 255, 185, 50, 225);
         RenderUtils.drawBeam(matrix, buffer, muzzle, muzzle.add(normal.scale(0.42)), 0.06f, 255, 95, 20, 210);
     }

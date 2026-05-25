@@ -19,5 +19,12 @@
     "sounds": [
       "flux_turret:prism_shoot"
     ]
+  },
+  "grand_cannon_shoot": {
+    "category": "block",
+    "subtitle": "subtitles.flux_turret.grand_cannon_shoot",
+    "sounds": [
+      "flux_turret:grand_cannon_shoot"
+    ]
   }
 }

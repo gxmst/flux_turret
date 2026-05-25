@@ -1,5 +1,6 @@
 package com.mymod.flux_turret.block.entity;
 
+import com.mymod.flux_turret.TurretConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -191,6 +192,7 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
 
     protected boolean isValidTarget(Monster monster, Level level, BlockPos selfPos) {
         if (!monster.isAlive()) return false;
+        if (TurretConfig.FRIENDLY_FIRE_PROTECTION.get() && monster.hasCustomName()) return false;
         Vec3 eyePos = new Vec3(selfPos.getX() + 0.5, selfPos.getY() + getEyeHeight(), selfPos.getZ() + 0.5);
         Vec3 targetEye = monster.getEyePosition(0.0f);
         BlockHitResult hitResult = level.clip(new ClipContext(
@@ -217,6 +219,12 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
                 .filter(m -> isValidTarget(m, level, pos))
                 .min(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
                 .orElse(null);
+    }
+
+    protected boolean isRedstoneBlocked(Level level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        return state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED)
+                && state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED);
     }
 
     protected void baseClientTick(Level level) {

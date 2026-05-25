@@ -5,34 +5,26 @@ import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
 import net.minecraft.resources.ResourceLocation;
 import software.bernie.geckolib.model.GeoModel;
 import software.bernie.geckolib.core.animation.AnimationState;
-import software.bernie.geckolib.core.animatable.model.CoreGeoBone;
 
 public class PrismTowerModel extends GeoModel<PrismTowerBlockEntity> {
     @Override
     public ResourceLocation getModelResource(PrismTowerBlockEntity animatable) {
-        return new ResourceLocation(FluxTurretMod.MOD_ID, "geo/block/prism_tower.geo.json");
+        return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "geo/block/prism_tower.geo.json");
     }
 
     @Override
     public ResourceLocation getTextureResource(PrismTowerBlockEntity animatable) {
-        return new ResourceLocation(FluxTurretMod.MOD_ID, "textures/block/prism_tower.png");
+        return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "textures/block/prism_tower.png");
     }
 
     @Override
     public ResourceLocation getAnimationResource(PrismTowerBlockEntity animatable) {
-        return new ResourceLocation(FluxTurretMod.MOD_ID, "animations/block/prism_tower.animation.json");
+        return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "animations/block/prism_tower.animation.json");
     }
 
     @Override
     public void setCustomAnimations(PrismTowerBlockEntity animatable, long instanceId,
             AnimationState<PrismTowerBlockEntity> animationState) {
         super.setCustomAnimations(animatable, instanceId, animationState);
-        CoreGeoBone turret = getAnimationProcessor().getBone("turret");
-
-        // Only rotate when powered; FE state is synced through the block entity update tag.
-        if (turret != null && animatable.getLevel() != null && animatable.isVisuallyPowered()) {
-            float rotation = (animatable.getLevel().getGameTime() % 360) * 0.08f;
-            turret.setRotY(rotation);
-        }
     }
 }

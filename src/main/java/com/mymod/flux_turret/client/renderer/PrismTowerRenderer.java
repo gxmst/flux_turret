@@ -12,12 +12,14 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
+import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 
 public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEntity> {
     private final GeoBlockRenderer<PrismTowerBlockEntity> geckoRenderer;
 
     public PrismTowerRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new PrismTowerModel());
+        this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
     }
 
     @Override
@@ -40,7 +42,7 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
             }
             isSupport = false;
         } else if (be.visualTargetType == 2 && be.visualTargetPos != null) {
-            be.visualCachedTargetPos = Vec3.atLowerCornerOf(be.visualTargetPos).add(0.5, 2.875, 0.5);
+            be.visualCachedTargetPos = Vec3.atLowerCornerOf(be.visualTargetPos).add(0.5, 3.125, 0.5);
             isSupport = true;
         }
 
@@ -53,7 +55,7 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
 
     private void renderLaser(PrismTowerBlockEntity be, Vec3 targetWorldPos, boolean isSupport, int supportCount,
             PoseStack poseStack, MultiBufferSource bufferSource) {
-        Vec3 start = new Vec3(0.5, 3.375, 0.5);
+        Vec3 start = new Vec3(0.5, 3.125, 0.5);
         Vec3 bePos = Vec3.atLowerCornerOf(be.getBlockPos());
         Vec3 end = targetWorldPos.subtract(bePos);
 

@@ -1,9 +1,9 @@
 package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
+import com.mymod.flux_turret.TurretConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
@@ -11,11 +11,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
-    private static final int CAPACITY = 60000;
     private static final int MAX_RECEIVE = 800;
-    private static final int FIRE_COST = 30;
-    private static final double TARGET_RANGE = 11.0;
-    private static final float DAMAGE = 0.5f;
     private static final int MIN_FIRE_INTERVAL = 2;
     private static final int MAX_FIRE_INTERVAL = 30;
     private static final int MAX_SPIN = 200;
@@ -27,17 +23,30 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     private long lastSoundTime = 0;
 
     public GatlingTurretBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.GATLING_TURRET_BE.get(), pos, state, CAPACITY, MAX_RECEIVE);
+        super(ModRegistry.GATLING_TURRET_BE.get(), pos, state, 60000, MAX_RECEIVE);
+    }
+
+    @Override
+    public void registerControllers(software.bernie.geckolib.core.animation.AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new software.bernie.geckolib.core.animation.AnimationController<>(this, "controller", 0, state -> {
+            if (this.isVisuallyPowered()) {
+                if (this.visualCountdown > 0) {
+                    return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.gatling_turret.active"));
+                }
+                return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.gatling_turret.idle"));
+            }
+            return software.bernie.geckolib.core.object.PlayState.STOP;
+        }));
     }
 
     @Override
     protected double getTargetRange() {
-        return TARGET_RANGE;
+        return TurretConfig.GATLING_RANGE.get();
     }
 
     @Override
     protected double getEyeHeight() {
-        return 1.4;
+        return 1.25;
     }
 
     @Override
@@ -52,7 +61,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected int getMinOperatingCost() {
-        return FIRE_COST;
+        return TurretConfig.GATLING_FIRE_COST.get();
     }
 
     @Override
@@ -79,7 +88,21 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
         long prevFireTime = be.lastFireTime;
         boolean prevHasEnergy = be.visualHasEnergy;
 
-        boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= FIRE_COST;
+        if (be.isRedstoneBlocked(level, pos)) {
+            be.targetId = -1;
+            be.isFiring = false;
+            be.spinUp = Math.max(0, be.spinUp - 4);
+            be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.GATLING_FIRE_COST.get();
+            if (be.targetId != prevTargetId || be.spinUp != prevSpinUp || be.isFiring != prevFiring
+                    || be.visualHasEnergy != prevHasEnergy) {
+                be.setChanged();
+                level.sendBlockUpdated(pos, state, state, 3);
+            }
+            return;
+        }
+
+        int fireCost = TurretConfig.GATLING_FIRE_COST.get();
+        boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= fireCost;
         be.visualHasEnergy = hasEnoughEnergy;
 
         if (be.attackCooldown > 0)
@@ -97,10 +120,10 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
 
             if (be.spinUp < MIN_SPIN_TO_FIRE) {
                 be.isFiring = false;
-            } else if (be.attackCooldown <= 0 && be.getEnergyStorage().consumeEnergy(FIRE_COST)) {
+            } else if (be.attackCooldown <= 0 && be.getEnergyStorage().consumeEnergy(fireCost)) {
                 int interval = getFireInterval(be.spinUp);
                 target.invulnerableTime = 0;
-                target.hurt(level.damageSources().magic(), DAMAGE);
+                target.hurt(level.damageSources().magic(), TurretConfig.GATLING_DAMAGE.get().floatValue());
                 if (level.getGameTime() - be.lastSoundTime >= SOUND_INTERVAL) {
                     level.playSound(null, pos, ModRegistry.GATLING_SHOOT.get(), SoundSource.BLOCKS, 0.45f, 1.0f);
                     be.lastSoundTime = level.getGameTime();

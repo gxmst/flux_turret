@@ -2,11 +2,19 @@
     "block.flux_turret.prism_tower": "Prism Tower",
     "block.flux_turret.tesla_coil": "Tesla Coil",
     "block.flux_turret.gatling_turret": "Gatling Turret",
+    "block.flux_turret.grand_cannon": "Grand Cannon",
     "item.flux_turret.prism_tower": "Prism Tower",
     "item.flux_turret.tesla_coil": "Tesla Coil",
     "item.flux_turret.gatling_turret": "Gatling Turret",
-    "itemGroup.flux_turret": "Flux Turret",
+    "item.flux_turret.grand_cannon": "Grand Cannon",
+    "itemGroup.flux_turret": "gxFlux",
     "subtitles.flux_turret.gatling_shoot": "Gatling Turret fires",
     "subtitles.flux_turret.tesla_shoot": "Tesla Coil discharges",
-    "subtitles.flux_turret.prism_shoot": "Prism Tower fires"
+    "subtitles.flux_turret.prism_shoot": "Prism Tower fires",
+    "subtitles.flux_turret.grand_cannon_shoot": "Grand Cannon fires",
+    "tooltip.flux_turret.gatling_turret": "Haha, gun goes BRRRRRRR! Needs a tiny warm-up to spin, then rains absolute bullet hell. Individual damage is smol, but quantity is a quality of its own!",
+    "tooltip.flux_turret.tesla_coil": "UNLIMITED POWER! Zap zap! Heavy electric shocker that makes monsters do the electric slide. Discharges at a snail's pace, but hits like a flying truck. Bzzzt!",
+    "tooltip.flux_turret.prism_tower": "A literal L.A.S.E.R. party! Connect multiple shiny towers to summon a giant spicy laser pointer. When they link up, damage and range go stonks! 📈",
+    "tooltip.flux_turret.grand_cannon": "THE CHAD FRENCH GRAND CANNON. Yeets giant explosive shells from the next zip code. Massive area boom-boom, but environmentally friendly (no block damage). Absolute unit.",
+    "flux_turret.config.title": "gxFlux Configuration"
 }

@@ -12,12 +12,14 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
+import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 
 public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEntity> {
     private final GeoBlockRenderer<TeslaCoilBlockEntity> geckoRenderer;
 
     public TeslaCoilRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new TeslaCoilModel());
+        this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
     }
 
     @Override
@@ -79,7 +81,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
 
     private void renderArc(TeslaCoilBlockEntity be, Vec3 targetWorldPos, PoseStack poseStack,
             MultiBufferSource bufferSource) {
-        Vec3 start = new Vec3(0.5, 3.25, 0.5);
+        Vec3 start = new Vec3(0.5, 2.875, 0.5);
         Vec3 bePos = Vec3.atLowerCornerOf(be.getBlockPos());
         Vec3 end = targetWorldPos.subtract(bePos);
 

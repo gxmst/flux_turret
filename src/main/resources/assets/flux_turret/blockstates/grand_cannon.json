@@ -1,0 +1,16 @@
+{
+    "variants": {
+        "part=back_left": {
+            "model": "flux_turret:block/grand_cannon"
+        },
+        "part=back_right": {
+            "model": "flux_turret:block/grand_cannon_part"
+        },
+        "part=front_left": {
+            "model": "flux_turret:block/grand_cannon_part"
+        },
+        "part=front_right": {
+            "model": "flux_turret:block/grand_cannon_part"
+        }
+    }
+}

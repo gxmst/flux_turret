@@ -1,10 +1,9 @@
 package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
+import com.mymod.flux_turret.TurretConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -25,11 +24,7 @@ import java.util.Queue;
 import java.util.Set;
 
 public class PrismTowerBlockEntity extends TurretBlockEntityBase {
-    private static final int CAPACITY = 100000;
     private static final int MAX_RECEIVE = 1000;
-    private static final int MASTER_FIRE_COST = 1000;
-    private static final int SLAVE_FIRE_COST = 500;
-    private static final double BASE_MONSTER_SCAN_RANGE = 16.5;
     private static final double SUPPORT_RANGE_BONUS = 0.75;
     private static final double MAX_MONSTER_SCAN_RANGE = 24.0;
     private static final int NEIGHBOR_SCAN_RANGE = 12;
@@ -37,7 +32,6 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private static final int WARMUP_TICKS = 10;
     private static final int MASTER_COOLDOWN = 20;
     private static final int SLAVE_COOLDOWN = 2;
-    private static final float BASE_DAMAGE = 10.0f;
     private static final float SUPPORT_DAMAGE_MULT = 0.35f;
     private static final int DAMAGE_SUPPORT_CAP = 12;
     private static final int SUPPORT_SCAN_CAP = 100;
@@ -58,7 +52,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private List<PrismTowerBlockEntity> neighborCache = List.of();
 
     public PrismTowerBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.PRISM_TOWER_BE.get(), pos, state, CAPACITY, MAX_RECEIVE);
+        super(ModRegistry.PRISM_TOWER_BE.get(), pos, state, 100000, MAX_RECEIVE);
     }
 
     @Override
@@ -68,7 +62,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected double getEyeHeight() {
-        return 2.5;
+        return 3.125;
     }
 
     @Override
@@ -83,7 +77,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected int getMinOperatingCost() {
-        return SLAVE_FIRE_COST;
+        return TurretConfig.PRISM_SLAVE_FIRE_COST.get();
     }
 
     @Override
@@ -117,7 +111,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         if (tag == null) return;
 
         load(tag);
-        visualHasEnergy = getEnergyStorage().getEnergyStored() >= SLAVE_FIRE_COST;
+        visualHasEnergy = getEnergyStorage().getEnergyStored() >= TurretConfig.PRISM_SLAVE_FIRE_COST.get();
 
         visualTargetType = 0;
         visualTargetId = -1;
@@ -138,14 +132,14 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                 if (target != null)
                     visualCachedTargetPos = target.getEyePosition(0.0f);
             } else if (targetType == 2 && targetPos != null) {
-                visualCachedTargetPos = Vec3.atLowerCornerOf(targetPos).add(0.5, 3.375, 0.5);
+                visualCachedTargetPos = Vec3.atLowerCornerOf(targetPos).add(0.5, 3.125, 0.5);
             }
         }
     }
 
     private double getEffectiveScanRange() {
         int supportCount = computePotentialSupportCount();
-        return Math.min(MAX_MONSTER_SCAN_RANGE, BASE_MONSTER_SCAN_RANGE + supportCount * SUPPORT_RANGE_BONUS);
+        return Math.min(MAX_MONSTER_SCAN_RANGE, TurretConfig.PRISM_RANGE.get() + supportCount * SUPPORT_RANGE_BONUS);
     }
 
     private void refreshNeighborCache(Level level, BlockPos pos) {
@@ -178,7 +172,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         for (PrismTowerBlockEntity neighbor : neighborCache) {
             BlockPos np = neighbor.getBlockPos();
             if (visited.contains(np)) continue;
-            if (neighbor.getEnergyStorage().getEnergyStored() < SLAVE_FIRE_COST) continue;
+            if (neighbor.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) continue;
             if (!withinRange(np, getBlockPos(), NEIGHBOR_SCAN_RANGE)) continue;
             visited.add(np);
             queue.add(new SupportNode(np, 1));
@@ -194,7 +188,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
             for (PrismTowerBlockEntity nn : currentTE.neighborCache) {
                 BlockPos nnPos = nn.getBlockPos();
                 if (visited.contains(nnPos)) continue;
-                if (nn.getEnergyStorage().getEnergyStored() < SLAVE_FIRE_COST) continue;
+                if (nn.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) continue;
                 if (!withinRange(nnPos, node.pos, NEIGHBOR_SCAN_RANGE)) continue;
                 visited.add(nnPos);
                 queue.add(new SupportNode(nnPos, node.depth + 1));
@@ -215,7 +209,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
             BlockPos np = neighbor.getBlockPos();
             if (visited.contains(np)) continue;
             if (neighbor.currentDepth < 0) continue;
-            if (neighbor.getEnergyStorage().getEnergyStored() < SLAVE_FIRE_COST) continue;
+            if (neighbor.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) continue;
             if (neighbor.masterPos == null || !neighbor.masterPos.equals(masterBlockPos)) continue;
             if (!withinRange(np, masterBlockPos, NEIGHBOR_SCAN_RANGE)) continue;
             visited.add(np);
@@ -233,7 +227,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                 BlockPos nnPos = nn.getBlockPos();
                 if (visited.contains(nnPos)) continue;
                 if (nn.currentDepth < 0) continue;
-                if (nn.getEnergyStorage().getEnergyStored() < SLAVE_FIRE_COST) continue;
+                if (nn.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) continue;
                 if (nn.masterPos == null || !nn.masterPos.equals(masterBlockPos)) continue;
                 if (!withinRange(nnPos, node.pos, NEIGHBOR_SCAN_RANGE)) continue;
                 visited.add(nnPos);
@@ -257,7 +251,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         if (parent == this) return false;
         if (parent.currentDepth < 0 || parent.currentDepth >= MAX_DEPTH) return false;
         if (parent.masterPos == null) return false;
-        if (parent.getEnergyStorage().getEnergyStored() < SLAVE_FIRE_COST) return false;
+        if (parent.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) return false;
         if (!withinRange(parent.getBlockPos(), relayPos, NEIGHBOR_SCAN_RANGE)) return false;
         return parent.hasLiveRelayTarget();
     }
@@ -294,7 +288,20 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         int prevSupportCount = be.cachedSupportCount;
         boolean prevHasEnergy = be.visualHasEnergy;
 
-        boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= SLAVE_FIRE_COST;
+        if (be.isRedstoneBlocked(level, pos)) {
+            resetState(be);
+            be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.PRISM_SLAVE_FIRE_COST.get();
+            if (be.currentDepth != prevDepth || be.targetType != prevTargetType || be.targetId != prevTargetId
+                    || !java.util.Objects.equals(be.targetPos, prevTargetPos)
+                    || !java.util.Objects.equals(be.masterPos, prevMasterPos)
+                    || be.isFiring != prevFiring || be.visualHasEnergy != prevHasEnergy) {
+                be.setChanged();
+                level.sendBlockUpdated(pos, state, state, 3);
+            }
+            return;
+        }
+
+        boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.PRISM_SLAVE_FIRE_COST.get();
         be.visualHasEnergy = hasEnoughEnergy;
 
         if (be.attackCooldown > 0)
@@ -303,12 +310,12 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         if (hasEnoughEnergy) {
             Monster closestMonster = be.findClosestMonster(level, pos);
 
-            boolean hasMasterEnergy = be.getEnergyStorage().getEnergyStored() >= MASTER_FIRE_COST;
+            boolean hasMasterEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.PRISM_MASTER_FIRE_COST.get();
             boolean isMasterPotential = false;
             if (hasMasterEnergy && closestMonster != null) {
                 double myDistSq = closestMonster.distanceToSqr(pos.getX(), pos.getY(), pos.getZ());
                 isMasterPotential = be.neighborCache.stream()
-                        .filter(t -> t.getEnergyStorage().getEnergyStored() >= MASTER_FIRE_COST)
+                        .filter(t -> t.getEnergyStorage().getEnergyStored() >= TurretConfig.PRISM_MASTER_FIRE_COST.get())
                         .filter(t -> t.isValidTarget(closestMonster, level, t.getBlockPos()))
                         .noneMatch(t -> {
                             double nDistSq = closestMonster.distanceToSqr(
@@ -332,8 +339,8 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                     be.warmupTicks++;
                     if (be.warmupTicks >= WARMUP_TICKS) {
                         int damageSupports = Math.min(be.cachedSupportCount, DAMAGE_SUPPORT_CAP);
-                        float damage = BASE_DAMAGE * (1.0f + damageSupports * SUPPORT_DAMAGE_MULT);
-                        if (be.getEnergyStorage().consumeEnergy(MASTER_FIRE_COST)) {
+                        float damage = TurretConfig.PRISM_DAMAGE.get().floatValue() * (1.0f + damageSupports * SUPPORT_DAMAGE_MULT);
+                        if (be.getEnergyStorage().consumeEnergy(TurretConfig.PRISM_MASTER_FIRE_COST.get())) {
                             closestMonster.invulnerableTime = 0;
                             closestMonster.hurt(level.damageSources().magic(), damage);
                             level.playSound(null, pos, ModRegistry.PRISM_SHOOT.get(), SoundSource.BLOCKS, 0.25f, 0.6f + level.random.nextFloat() * 0.08f);
@@ -352,7 +359,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                     be.warmupTicks = 0;
                 }
             } else {
-                if (be.getEnergyStorage().getEnergyStored() < SLAVE_FIRE_COST) {
+                if (be.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) {
                     resetState(be);
                 } else {
                     PrismTowerBlockEntity bestParent = be.neighborCache.stream()
@@ -372,7 +379,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                         be.warmupTicks = 0;
 
                         if (be.attackCooldown <= 0) {
-                            if (be.getEnergyStorage().consumeEnergy(SLAVE_FIRE_COST)) {
+                            if (be.getEnergyStorage().consumeEnergy(TurretConfig.PRISM_SLAVE_FIRE_COST.get())) {
                                 be.isFiring = true;
                                 be.lastFireTime = level.getGameTime();
                                 be.attackCooldown = SLAVE_COOLDOWN;
@@ -426,6 +433,19 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     public int getDepth() {
         return currentDepth;
+    }
+
+    @Override
+    public void registerControllers(software.bernie.geckolib.core.animation.AnimatableManager.ControllerRegistrar controllers) {
+        controllers.add(new software.bernie.geckolib.core.animation.AnimationController<>(this, "controller", 0, state -> {
+            if (this.isVisuallyPowered()) {
+                if (this.visualCountdown > 0) {
+                    return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.prism_tower.active"));
+                }
+                return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.prism_tower.idle"));
+            }
+            return software.bernie.geckolib.core.object.PlayState.STOP;
+        }));
     }
 
     @Override
