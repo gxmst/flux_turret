@@ -95,7 +95,7 @@ public class ModRegistry {
         public static final RegistryObject<BlockEntityType<GrandCannonBlockEntity>> GRAND_CANNON_BE = BLOCK_ENTITY_TYPES
                         .register("grand_cannon", () -> BlockEntityType.Builder
                                         .of(GrandCannonBlockEntity::new, GRAND_CANNON_BLOCK.get()).build(null));
- 
+
         public static final RegistryObject<CreativeModeTab> FLUX_TURRET_TAB = CREATIVE_MODE_TABS.register(
                         "flux_turret_tab",
                         () -> CreativeModeTab.builder()

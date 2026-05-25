@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
@@ -24,10 +25,6 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
     private int warmupTicks = 0;
     private boolean formed = false;
-
-    // Visual data for client
-    public int visualExplosionTimer = 0;
-    public Vec3 visualExplosionPos = null;
 
     public GrandCannonBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.GRAND_CANNON_BE.get(), pos, state, TurretConfig.GRAND_CANNON_CAPACITY.get(), MAX_RECEIVE);
@@ -121,15 +118,6 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected void handleDataPacketAdditional(CompoundTag tag) {
-        visualExplosionTimer = tag.getInt("ExplosionTimer");
-        if (tag.contains("ExplosionX")) {
-            visualExplosionPos = new Vec3(
-                    tag.getDouble("ExplosionX"),
-                    tag.getDouble("ExplosionY"),
-                    tag.getDouble("ExplosionZ"));
-        } else {
-            visualExplosionPos = null;
-        }
     }
 
     /**
@@ -150,12 +138,6 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
     public static void tick(Level level, BlockPos pos, BlockState state, GrandCannonBlockEntity be) {
         if (level.isClientSide) {
             be.baseClientTick(level);
-            if (be.visualExplosionTimer > 0) {
-                be.visualExplosionTimer--;
-                if (be.visualExplosionPos != null) {
-                    be.renderExplosionParticles(level, be.visualExplosionPos, be.visualExplosionTimer);
-                }
-            }
             return;
         }
 
@@ -239,15 +221,32 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
     private void fireCannon(Level level, BlockPos pos, Monster target) {
         Direction facing = getBlockState().getValue(GrandCannonBlock.FACING);
-        // Muzzle position: front center of the 2x2x1 structure
         Vec3 muzzlePos = new Vec3(
                 pos.getX() + 0.5 + facing.getStepX() * 1.5 + facing.getClockWise().getStepX() * 0.5,
                 pos.getY() + 1.2,
                 pos.getZ() + 0.5 + facing.getStepZ() * 1.5 + facing.getClockWise().getStepZ() * 0.5);
         Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
 
-        // Play cannon fire sound
-        level.playSound(null, pos, ModRegistry.GRAND_CANNON_SHOOT.get(), SoundSource.BLOCKS, 1.5f, 0.6f);
+        // Play cannon fire sound (vanilla, lower volume)
+        level.playSound(null, pos, SoundEvents.GENERIC_EXPLODE, SoundSource.BLOCKS, 0.8f, 0.6f);
+
+        // Spawn parabolic particle trail (server-side)
+        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            double horizontalDist = Math.sqrt((targetPos.x - muzzlePos.x) * (targetPos.x - muzzlePos.x) + (targetPos.z - muzzlePos.z) * (targetPos.z - muzzlePos.z));
+            double arcHeight = Math.max(6.0, horizontalDist * 0.15);
+            int steps = Math.max(8, Math.min(30, (int) horizontalDist / 2));
+            for (int i = 0; i <= steps; i++) {
+                float t = (float) i / steps;
+                double x = muzzlePos.x + (targetPos.x - muzzlePos.x) * t;
+                double z = muzzlePos.z + (targetPos.z - muzzlePos.z) * t;
+                double baseY = muzzlePos.y + (targetPos.y - muzzlePos.y) * t;
+                double y = baseY + arcHeight * 4.0 * t * (1.0 - t);
+                serverLevel.sendParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, x, y, z, 1, 0.1, 0.1, 0.1, 0.0);
+                if (i % 2 == 0) {
+                    serverLevel.sendParticles(ParticleTypes.FLAME, x, y, z, 1, 0.05, 0.05, 0.05, 0.0);
+                }
+            }
+        }
 
         // Area damage at target position
         double explosionRadius = TurretConfig.GRAND_CANNON_EXPLOSION_RADIUS.get();
@@ -265,21 +264,17 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         for (Monster monster : monstersInArea) {
             monster.invulnerableTime = 0;
             monster.hurt(level.damageSources().explosion(null, null), damage);
-            // Knockback away from impact point
             Vec3 knockDir = monster.position().subtract(targetPos).normalize();
             monster.setDeltaMovement(monster.getDeltaMovement().add(knockDir.x * 1.5, 0.5, knockDir.z * 1.5));
         }
 
-        // Send explosion visual data to client
-        CompoundTag updateTag = getUpdateTag();
-        updateTag.putInt("ExplosionTimer", 15);
-        updateTag.putDouble("ExplosionX", targetPos.x);
-        updateTag.putDouble("ExplosionY", targetPos.y);
-        updateTag.putDouble("ExplosionZ", targetPos.z);
+        // Impact sound (vanilla, moderate volume)
+        level.playSound(null, targetPos.x, targetPos.y, targetPos.z,
+                SoundEvents.GENERIC_EXPLODE, SoundSource.BLOCKS, 1.0f, 0.8f);
 
-        // Spawn server-side particles for players nearby
+        // Impact particles
         if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            for (int i = 0; i < 30; i++) {
+            for (int i = 0; i < 15; i++) {
                 double dx = (level.random.nextDouble() - 0.5) * explosionRadius * 2;
                 double dy = (level.random.nextDouble() - 0.5) * explosionRadius * 2;
                 double dz = (level.random.nextDouble() - 0.5) * explosionRadius * 2;
@@ -287,35 +282,13 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
                         targetPos.x + dx, targetPos.y + dy, targetPos.z + dz,
                         1, 0, 0, 0, 0);
             }
-            for (int i = 0; i < 20; i++) {
+            for (int i = 0; i < 10; i++) {
                 double dx = (level.random.nextDouble() - 0.5) * explosionRadius;
                 double dy = (level.random.nextDouble() - 0.5) * explosionRadius;
                 double dz = (level.random.nextDouble() - 0.5) * explosionRadius;
                 serverLevel.sendParticles(ParticleTypes.LARGE_SMOKE,
                         targetPos.x + dx, targetPos.y + dy, targetPos.z + dz,
                         1, 0, 0.1, 0, 0.02);
-            }
-            for (int i = 0; i < 15; i++) {
-                double dx = (level.random.nextDouble() - 0.5) * explosionRadius * 0.5;
-                double dy = (level.random.nextDouble() - 0.5) * explosionRadius * 0.5;
-                double dz = (level.random.nextDouble() - 0.5) * explosionRadius * 0.5;
-                serverLevel.sendParticles(ParticleTypes.FLAME,
-                        targetPos.x + dx, targetPos.y + dy, targetPos.z + dz,
-                        1, 0, 0.15, 0, 0.02);
-            }
-        }
-    }
-
-    private void renderExplosionParticles(Level level, Vec3 pos, int timer) {
-        if (timer % 3 == 0) {
-            double radius = TurretConfig.GRAND_CANNON_EXPLOSION_RADIUS.get();
-            for (int i = 0; i < 5; i++) {
-                double dx = (level.random.nextDouble() - 0.5) * radius;
-                double dy = (level.random.nextDouble() - 0.5) * radius;
-                double dz = (level.random.nextDouble() - 0.5) * radius;
-                level.addParticle(ParticleTypes.LARGE_SMOKE,
-                        pos.x + dx, pos.y + dy, pos.z + dz,
-                        0, 0.1, 0);
             }
         }
     }
