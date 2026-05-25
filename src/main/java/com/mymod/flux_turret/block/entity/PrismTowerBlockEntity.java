@@ -138,7 +138,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                 if (target != null)
                     visualCachedTargetPos = target.getEyePosition(0.0f);
             } else if (targetType == 2 && targetPos != null) {
-                visualCachedTargetPos = Vec3.atLowerCornerOf(targetPos).add(0.5, 2.875, 0.5);
+                visualCachedTargetPos = Vec3.atLowerCornerOf(targetPos).add(0.5, 3.375, 0.5);
             }
         }
     }
@@ -336,8 +336,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                         if (be.getEnergyStorage().consumeEnergy(MASTER_FIRE_COST)) {
                             closestMonster.invulnerableTime = 0;
                             closestMonster.hurt(level.damageSources().magic(), damage);
-                            level.playSound(null, pos, SoundEvents.GUARDIAN_ATTACK, SoundSource.BLOCKS, 1.0f,
-                                    1.2f + be.cachedSupportCount * 0.05f);
+                            level.playSound(null, pos, ModRegistry.PRISM_SHOOT.get(), SoundSource.BLOCKS, 0.25f, 0.6f + level.random.nextFloat() * 0.08f);
                             be.isFiring = true;
                             be.lastFireTime = level.getGameTime();
                             be.attackCooldown = MASTER_COOLDOWN;

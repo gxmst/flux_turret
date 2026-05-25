@@ -84,8 +84,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                     if (be.getEnergyStorage().consumeEnergy(FIRE_COST)) {
                         target.invulnerableTime = 0;
                         target.hurt(level.damageSources().magic(), DAMAGE);
-                        level.playSound(null, pos, SoundEvents.TRIDENT_THUNDER, SoundSource.BLOCKS, 0.75f, 1.65f);
-                        level.playSound(null, pos, SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.BLOCKS, 0.45f, 1.85f);
+                        level.playSound(null, pos, ModRegistry.TESLA_SHOOT.get(), SoundSource.BLOCKS, 0.75f, 1.0f);
                         be.isFiring = true;
                         be.lastFireTime = level.getGameTime();
                         be.attackCooldown = ATTACK_COOLDOWN;

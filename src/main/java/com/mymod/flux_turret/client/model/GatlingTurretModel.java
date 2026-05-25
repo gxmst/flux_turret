@@ -40,7 +40,7 @@ public class GatlingTurretModel extends GeoModel<GatlingTurretBlockEntity> {
             if (target != null) {
                 double dx = target.getX() - (animatable.getBlockPos().getX() + 0.5);
                 double dz = target.getZ() - (animatable.getBlockPos().getZ() + 0.5);
-                turret.setRotY((float) Math.atan2(dx, -dz));
+                turret.setRotY(-(float) Math.atan2(dx, -dz));
             }
         }
 

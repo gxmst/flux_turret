@@ -53,7 +53,7 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
 
     private void renderLaser(PrismTowerBlockEntity be, Vec3 targetWorldPos, boolean isSupport, int supportCount,
             PoseStack poseStack, MultiBufferSource bufferSource) {
-        Vec3 start = new Vec3(0.5, 2.875, 0.5);
+        Vec3 start = new Vec3(0.5, 3.375, 0.5);
         Vec3 bePos = Vec3.atLowerCornerOf(be.getBlockPos());
         Vec3 end = targetWorldPos.subtract(bePos);
 

@@ -102,8 +102,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
                 target.invulnerableTime = 0;
                 target.hurt(level.damageSources().magic(), DAMAGE);
                 if (level.getGameTime() - be.lastSoundTime >= SOUND_INTERVAL) {
-                    level.playSound(null, pos, SoundEvents.CROSSBOW_SHOOT, SoundSource.BLOCKS, 0.45f, 1.75f);
-                    level.playSound(null, pos, SoundEvents.DISPENSER_DISPENSE, SoundSource.BLOCKS, 0.25f, 1.35f);
+                    level.playSound(null, pos, ModRegistry.GATLING_SHOOT.get(), SoundSource.BLOCKS, 0.45f, 1.0f);
                     be.lastSoundTime = level.getGameTime();
                 }
                 be.isFiring = true;

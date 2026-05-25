@@ -5,5 +5,8 @@
     "item.flux_turret.prism_tower": "Prism Tower",
     "item.flux_turret.tesla_coil": "Tesla Coil",
     "item.flux_turret.gatling_turret": "Gatling Turret",
-    "itemGroup.flux_turret": "Flux Turret"
+    "itemGroup.flux_turret": "Flux Turret",
+    "subtitles.flux_turret.gatling_shoot": "Gatling Turret fires",
+    "subtitles.flux_turret.tesla_shoot": "Tesla Coil discharges",
+    "subtitles.flux_turret.prism_shoot": "Prism Tower fires"
 }

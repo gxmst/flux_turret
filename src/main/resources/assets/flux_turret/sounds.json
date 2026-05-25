@@ -1,0 +1,23 @@
+{
+  "gatling_shoot": {
+    "category": "block",
+    "subtitle": "subtitles.flux_turret.gatling_shoot",
+    "sounds": [
+      "flux_turret:gatling_shoot"
+    ]
+  },
+  "tesla_shoot": {
+    "category": "block",
+    "subtitle": "subtitles.flux_turret.tesla_shoot",
+    "sounds": [
+      "flux_turret:tesla_shoot"
+    ]
+  },
+  "prism_shoot": {
+    "category": "block",
+    "subtitle": "subtitles.flux_turret.prism_shoot",
+    "sounds": [
+      "flux_turret:prism_shoot"
+    ]
+  }
+}

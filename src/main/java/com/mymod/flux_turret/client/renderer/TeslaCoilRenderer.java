@@ -79,7 +79,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
 
     private void renderArc(TeslaCoilBlockEntity be, Vec3 targetWorldPos, PoseStack poseStack,
             MultiBufferSource bufferSource) {
-        Vec3 start = new Vec3(0.5, 3.5, 0.5);
+        Vec3 start = new Vec3(0.5, 3.25, 0.5);
         Vec3 bePos = Vec3.atLowerCornerOf(be.getBlockPos());
         Vec3 end = targetWorldPos.subtract(bePos);
 
