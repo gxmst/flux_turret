@@ -15,14 +15,17 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
+import com.mymod.flux_turret.block.EnergyCrystalBlock;
 import com.mymod.flux_turret.block.GatlingTurretBlock;
 import com.mymod.flux_turret.block.GrandCannonBlock;
 import com.mymod.flux_turret.block.PrismTowerBlock;
 import com.mymod.flux_turret.block.TeslaCoilBlock;
+import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
 import com.mymod.flux_turret.block.entity.GatlingTurretBlockEntity;
 import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
 import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
+import com.mymod.flux_turret.item.EnergyCrystalItem;
 
 public class ModRegistry {
         public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS,
@@ -67,6 +70,10 @@ public class ModRegistry {
         public static final RegistryObject<Block> GRAND_CANNON_BLOCK = BLOCKS.register("grand_cannon",
                         () -> new GrandCannonBlock(BlockBehaviour.Properties.of().strength(8.0f).sound(SoundType.METAL)
                                         .noOcclusion()));
+
+        public static final RegistryObject<Block> ENERGY_CRYSTAL_BLOCK = BLOCKS.register("energy_crystal",
+                        () -> new EnergyCrystalBlock(BlockBehaviour.Properties.of().strength(3.0f).sound(SoundType.AMETHYST)
+                                        .noOcclusion().lightLevel(state -> 8)));
  
         public static final RegistryObject<Item> PRISM_TOWER_ITEM = ITEMS.register("prism_tower",
                         () -> new BlockItem(PRISM_TOWER_BLOCK.get(), new Item.Properties()));
@@ -79,6 +86,12 @@ public class ModRegistry {
 
         public static final RegistryObject<Item> GRAND_CANNON_ITEM = ITEMS.register("grand_cannon",
                         () -> new BlockItem(GRAND_CANNON_BLOCK.get(), new Item.Properties()));
+
+        public static final RegistryObject<Item> ENERGY_CRYSTAL_ITEM = ITEMS.register("energy_crystal",
+                        () -> new EnergyCrystalItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
+
+        public static final RegistryObject<Item> EMPTY_CRYSTAL_ITEM = ITEMS.register("empty_crystal",
+                        () -> new BlockItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
  
         public static final RegistryObject<BlockEntityType<PrismTowerBlockEntity>> PRISM_TOWER_BE = BLOCK_ENTITY_TYPES
                         .register("prism_tower", () -> BlockEntityType.Builder
@@ -96,6 +109,10 @@ public class ModRegistry {
                         .register("grand_cannon", () -> BlockEntityType.Builder
                                         .of(GrandCannonBlockEntity::new, GRAND_CANNON_BLOCK.get()).build(null));
 
+        public static final RegistryObject<BlockEntityType<EnergyCrystalBlockEntity>> ENERGY_CRYSTAL_BE = BLOCK_ENTITY_TYPES
+                        .register("energy_crystal", () -> BlockEntityType.Builder
+                                        .of(EnergyCrystalBlockEntity::new, ENERGY_CRYSTAL_BLOCK.get()).build(null));
+
         public static final RegistryObject<CreativeModeTab> FLUX_TURRET_TAB = CREATIVE_MODE_TABS.register(
                         "flux_turret_tab",
                         () -> CreativeModeTab.builder()
@@ -106,6 +123,8 @@ public class ModRegistry {
                                                 output.accept(TESLA_COIL_ITEM.get());
                                                 output.accept(GATLING_TURRET_ITEM.get());
                                                 output.accept(GRAND_CANNON_ITEM.get());
+                                                output.accept(EMPTY_CRYSTAL_ITEM.get());
+                                                output.accept(ENERGY_CRYSTAL_ITEM.get());
                                         }).build());
  
         public static void register(IEventBus eventBus) {

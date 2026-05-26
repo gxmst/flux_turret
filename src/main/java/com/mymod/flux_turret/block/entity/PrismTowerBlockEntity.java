@@ -52,7 +52,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private List<PrismTowerBlockEntity> neighborCache = List.of();
 
     public PrismTowerBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.PRISM_TOWER_BE.get(), pos, state, 100000, MAX_RECEIVE);
+        super(ModRegistry.PRISM_TOWER_BE.get(), pos, state, TurretConfig.PRISM_CAPACITY.get(), MAX_RECEIVE);
     }
 
     @Override

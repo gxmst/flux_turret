@@ -32,6 +32,13 @@ public class TurretConfig {
     public static final ForgeConfigSpec.IntValue GRAND_CANNON_COOLDOWN;
     public static final ForgeConfigSpec.IntValue GRAND_CANNON_CAPACITY;
 
+    // Energy Crystal
+    public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_CAPACITY;
+    public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_MAX_OUTPUT;
+    public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_CHARGE_RATE;
+    public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_REDSTONE_CHARGE;
+    public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE;
+
     // General
     public static final ForgeConfigSpec.BooleanValue FRIENDLY_FIRE_PROTECTION;
 
@@ -67,6 +74,14 @@ public class TurretConfig {
         GRAND_CANNON_FIRE_COST = builder.comment("Energy cost per shot").defineInRange("fireCost", 8000, 100, 1000000);
         GRAND_CANNON_COOLDOWN = builder.comment("Cooldown ticks between shots").defineInRange("cooldown", 200, 20, 1200);
         GRAND_CANNON_CAPACITY = builder.comment("Energy capacity").defineInRange("capacity", 500000, 1000, 5000000);
+        builder.pop();
+
+        builder.comment("Energy Crystal Settings").push("energy_crystal");
+        ENERGY_CRYSTAL_CAPACITY = builder.comment("Energy capacity").defineInRange("capacity", 100000, 1000, 5000000);
+        ENERGY_CRYSTAL_MAX_OUTPUT = builder.comment("Max energy output per tick").defineInRange("maxOutput", 200, 10, 10000);
+        ENERGY_CRYSTAL_CHARGE_RATE = builder.comment("FE per tick charged from furnace below").defineInRange("chargeRate", 50, 1, 5000);
+        ENERGY_CRYSTAL_REDSTONE_CHARGE = builder.comment("FE added per redstone dust (right-click)").defineInRange("redstoneCharge", 2500, 100, 50000);
+        ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE = builder.comment("FE added per redstone block (right-click)").defineInRange("redstoneBlockCharge", 22500, 1000, 500000);
         builder.pop();
 
         builder.comment("General Settings").push("general");

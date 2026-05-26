@@ -101,30 +101,13 @@ public class GrandCannonBlock extends BaseEntityBlock {
                 }
             } else {
                 // Part broken: find core and destroy entire structure
+                // Let the core's onRemove handle item dropping to avoid double drops
                 BlockPos corePos = part.getCorePos(pos, facing);
                 BlockState coreState = level.getBlockState(corePos);
                 if (coreState.getBlock() == this && coreState.hasProperty(PART)
                         && coreState.getValue(PART) == CannonPart.BACK_LEFT) {
-                    Direction coreFacing = coreState.getValue(FACING);
-                    // Remove all other parts first (avoid recursion)
-                    for (CannonPart p : CannonPart.values()) {
-                        if (p == CannonPart.BACK_LEFT) continue;
-                        BlockPos pPos = p.offset(corePos, coreFacing);
-                        if (!pPos.equals(pos)) {
-                            BlockState ps = level.getBlockState(pPos);
-                            if (ps.getBlock() == this) {
-                                level.setBlock(pPos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 18);
-                            }
-                        }
-                    }
-                    // Remove core and drop item
-                    level.setBlock(corePos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 18);
-                    if (!level.isClientSide) {
-                        net.minecraft.world.item.ItemStack dropStack = new net.minecraft.world.item.ItemStack(this);
-                        net.minecraft.world.entity.item.ItemEntity itemEntity = new net.minecraft.world.entity.item.ItemEntity(
-                                level, corePos.getX() + 0.5, corePos.getY() + 0.5, corePos.getZ() + 0.5, dropStack);
-                        level.addFreshEntity(itemEntity);
-                    }
+                    // Remove core last — its onRemove will drop the item and clean up remaining parts
+                    level.setBlock(corePos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
                 }
             }
         }

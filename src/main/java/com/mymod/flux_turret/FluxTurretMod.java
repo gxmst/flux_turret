@@ -5,6 +5,7 @@ import com.mymod.flux_turret.client.renderer.PrismTowerRenderer;
 import com.mymod.flux_turret.client.renderer.GatlingTurretRenderer;
 import com.mymod.flux_turret.client.renderer.GrandCannonRenderer;
 import com.mymod.flux_turret.client.renderer.TeslaCoilRenderer;
+import com.mymod.flux_turret.client.renderer.EnergyCrystalRenderer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
 import net.minecraftforge.api.distmarker.Dist;
@@ -54,6 +55,7 @@ public class FluxTurretMod {
             event.registerBlockEntityRenderer(ModRegistry.TESLA_COIL_BE.get(), TeslaCoilRenderer::new);
             event.registerBlockEntityRenderer(ModRegistry.GATLING_TURRET_BE.get(), GatlingTurretRenderer::new);
             event.registerBlockEntityRenderer(ModRegistry.GRAND_CANNON_BE.get(), GrandCannonRenderer::new);
+            event.registerBlockEntityRenderer(ModRegistry.ENERGY_CRYSTAL_BE.get(), EnergyCrystalRenderer::new);
         }
     }
 

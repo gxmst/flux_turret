@@ -23,7 +23,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     private long lastSoundTime = 0;
 
     public GatlingTurretBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.GATLING_TURRET_BE.get(), pos, state, 60000, MAX_RECEIVE);
+        super(ModRegistry.GATLING_TURRET_BE.get(), pos, state, TurretConfig.GATLING_CAPACITY.get(), MAX_RECEIVE);
     }
 
     @Override

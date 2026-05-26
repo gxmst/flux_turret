@@ -1,0 +1,9 @@
+{
+    "type": "minecraft:smelting",
+    "ingredient": {
+        "item": "flux_turret:empty_crystal"
+    },
+    "result": "flux_turret:energy_crystal",
+    "experience": 0.5,
+    "cookingtime": 200
+}

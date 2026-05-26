@@ -1,0 +1,15 @@
+{
+    "type": "minecraft:crafting_shapeless",
+    "ingredients": [
+        {
+            "item": "flux_turret:empty_crystal"
+        },
+        {
+            "item": "minecraft:redstone_block"
+        }
+    ],
+    "result": {
+        "item": "flux_turret:energy_crystal",
+        "count": 1
+    }
+}

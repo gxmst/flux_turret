@@ -1,0 +1,5 @@
+{
+    "variants": {
+        "": { "model": "flux_turret:block/energy_crystal" }
+    }
+}

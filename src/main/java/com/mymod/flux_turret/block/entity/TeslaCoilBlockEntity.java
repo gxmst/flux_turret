@@ -20,7 +20,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     private int warmupTicks = 0;
 
     public TeslaCoilBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.TESLA_COIL_BE.get(), pos, state, 120000, MAX_RECEIVE);
+        super(ModRegistry.TESLA_COIL_BE.get(), pos, state, TurretConfig.TESLA_CAPACITY.get(), MAX_RECEIVE);
     }
 
     @Override
