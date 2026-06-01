@@ -21,16 +21,19 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
     public static final int MAX_OUTPUT = 200;
     public static final int CHARGE_RATE = 50; // FE per tick from furnace
 
+    private static final int TICK_INTERVAL = 5;
+
     private final EnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyCap;
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
     private int activeTicks = 0;
     private boolean charging = false;
+    private int tickCounter = 0;
 
     public EnergyCrystalBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.ENERGY_CRYSTAL_BE.get(), pos, state);
-        this.energyStorage = new EnergyStorage(CAPACITY, CAPACITY, MAX_OUTPUT, 0);
+        this.energyStorage = new EnergyStorage(CAPACITY, CAPACITY, MAX_OUTPUT * TICK_INTERVAL, 0);
         this.energyCap = LazyOptional.of(() -> this.energyStorage);
     }
 
@@ -46,9 +49,12 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             return;
         }
 
+        be.tickCounter++;
+        if (be.tickCounter % TICK_INTERVAL != 0) return;
+
         int capacity = TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
-        int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get();
-        int maxOutput = TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get();
+        int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get() * TICK_INTERVAL;
+        int maxOutput = TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * TICK_INTERVAL;
 
         // Charge from lit furnace below
         boolean wasCharging = be.charging;

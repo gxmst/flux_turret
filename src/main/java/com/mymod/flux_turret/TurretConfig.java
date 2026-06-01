@@ -39,6 +39,18 @@ public class TurretConfig {
     public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_REDSTONE_CHARGE;
     public static final ForgeConfigSpec.IntValue ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE;
 
+    // Psychic Beacon
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_CAPACITY;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_BATTLE_DURATION;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_SPAWN_INTERVAL;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_MAX_MONSTERS;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_STABILITY;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_REDSTONE_CHARGE;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_REDSTONE_BLOCK_CHARGE;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_DAWN_COST;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_MIN_KILLS;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_DRAIN_RATE;
+
     // General
     public static final ForgeConfigSpec.BooleanValue FRIENDLY_FIRE_PROTECTION;
 
@@ -82,6 +94,19 @@ public class TurretConfig {
         ENERGY_CRYSTAL_CHARGE_RATE = builder.comment("FE per tick charged from furnace below").defineInRange("chargeRate", 50, 1, 5000);
         ENERGY_CRYSTAL_REDSTONE_CHARGE = builder.comment("FE added per redstone dust (right-click)").defineInRange("redstoneCharge", 2500, 100, 50000);
         ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE = builder.comment("FE added per redstone block (right-click)").defineInRange("redstoneBlockCharge", 22500, 1000, 500000);
+        builder.pop();
+
+        builder.comment("Psychic Beacon Settings").push("psychic_beacon");
+        PSYCHIC_BEACON_CAPACITY = builder.comment("Energy capacity (also the activation cost)").defineInRange("capacity", 50000, 10000, 1000000);
+        PSYCHIC_BEACON_BATTLE_DURATION = builder.comment("Battle duration in ticks").defineInRange("battleDuration", 1200, 200, 6000);
+        PSYCHIC_BEACON_SPAWN_INTERVAL = builder.comment("Ticks between monster spawns").defineInRange("spawnInterval", 160, 40, 600);
+        PSYCHIC_BEACON_MAX_MONSTERS = builder.comment("Max monsters alive at once").defineInRange("maxMonsters", 20, 5, 100);
+        PSYCHIC_BEACON_STABILITY = builder.comment("Initial stability value").defineInRange("stability", 100, 20, 500);
+        PSYCHIC_BEACON_REDSTONE_CHARGE = builder.comment("FE added per redstone dust (right-click)").defineInRange("redstoneCharge", 2500, 100, 50000);
+        PSYCHIC_BEACON_REDSTONE_BLOCK_CHARGE = builder.comment("FE added per redstone block (right-click)").defineInRange("redstoneBlockCharge", 22500, 1000, 500000);
+        PSYCHIC_BEACON_DAWN_COST = builder.comment("FE cost for dawn synthesis").defineInRange("dawnCost", 15000, 5000, 50000);
+        PSYCHIC_BEACON_MIN_KILLS = builder.comment("Minimum kills required for dawn synthesis").defineInRange("minKills", 5, 1, 20);
+        PSYCHIC_BEACON_DRAIN_RATE = builder.comment("FE per tick drain rate").defineInRange("drainRate", 2, 1, 20);
         builder.pop();
 
         builder.comment("General Settings").push("general");

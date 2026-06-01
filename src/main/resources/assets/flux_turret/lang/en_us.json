@@ -4,12 +4,14 @@
     "block.flux_turret.gatling_turret": "Gatling Turret",
     "block.flux_turret.grand_cannon": "Grand Cannon",
     "block.flux_turret.energy_crystal": "Energy Crystal",
+    "block.flux_turret.psychic_beacon": "Psychic Beacon",
     "item.flux_turret.prism_tower": "Prism Tower",
     "item.flux_turret.tesla_coil": "Tesla Coil",
     "item.flux_turret.gatling_turret": "Gatling Turret",
     "item.flux_turret.grand_cannon": "Grand Cannon",
     "item.flux_turret.energy_crystal": "Energy Crystal",
     "item.flux_turret.empty_crystal": "Empty Crystal",
+    "item.flux_turret.psychic_beacon": "Psychic Beacon",
     "itemGroup.flux_turret": "gxFlux",
     "subtitles.flux_turret.gatling_shoot": "Gatling Turret fires",
     "subtitles.flux_turret.tesla_shoot": "Tesla Coil discharges",
@@ -21,5 +23,7 @@
     "tooltip.flux_turret.grand_cannon": "THE CHAD FRENCH GRAND CANNON. Yeets giant explosive shells from the next zip code. Massive area boom-boom, but environmentally friendly (no block damage). Absolute unit.",
     "tooltip.flux_turret.energy_crystal": "A shiny energy stone! Place next to turrets to auto-supply FE power. Can also be recharged by placing above a lit furnace!",
     "tooltip.flux_turret.empty_crystal": "A dull, lifeless crystal... Toss it in a furnace to turn it into a fully charged Energy Crystal!",
-    "flux_turret.config.title": "gxFlux Configuration"
+    "tooltip.flux_turret.psychic_beacon": "Build a metal pyramid base, charge it with redstone! Daytime: broadcasts buffs. Nighttime: lures monster waves! Survive until dawn to earn supply crates!",
+    "flux_turret.config.title": "gxFlux Configuration",
+    "container.flux_turret.psychic_beacon": "Psychic Radar Control Panel"
 }

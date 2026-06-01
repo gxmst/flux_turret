@@ -48,6 +48,9 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private BlockPos targetPos = null;
     private int warmupTicks = 0;
     private int cachedSupportCount = 0;
+    private int dyeColorIndex = -1;
+    private double cachedEffectiveRange = -1;
+    private int cachedPotentialSupports = 0;
 
     private List<PrismTowerBlockEntity> neighborCache = List.of();
 
@@ -57,7 +60,10 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected double getTargetRange() {
-        return getEffectiveScanRange();
+        if (cachedEffectiveRange < 0) {
+            cachedEffectiveRange = getEffectiveScanRange();
+        }
+        return cachedEffectiveRange;
     }
 
     @Override
@@ -85,6 +91,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         tag.putInt("Depth", currentDepth);
         tag.putInt("TargetType", targetType);
         tag.putInt("SyncSupports", cachedSupportCount);
+        tag.putInt("DyeColorIndex", dyeColorIndex);
         if (targetPos != null)
             tag.putLong("TargetPosLong", targetPos.asLong());
         if (masterPos != null)
@@ -99,6 +106,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         currentDepth = tag.getInt("Depth");
         targetType = tag.getInt("TargetType");
         cachedSupportCount = tag.getInt("SyncSupports");
+        dyeColorIndex = tag.contains("DyeColorIndex") ? tag.getInt("DyeColorIndex") : -1;
         if (tag.contains("TargetPosLong"))
             targetPos = BlockPos.of(tag.getLong("TargetPosLong"));
         if (tag.contains("MasterPosLong"))
@@ -138,8 +146,8 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     }
 
     private double getEffectiveScanRange() {
-        int supportCount = computePotentialSupportCount();
-        return Math.min(MAX_MONSTER_SCAN_RANGE, TurretConfig.PRISM_RANGE.get() + supportCount * SUPPORT_RANGE_BONUS);
+        cachedPotentialSupports = computePotentialSupportCount();
+        return Math.min(MAX_MONSTER_SCAN_RANGE, TurretConfig.PRISM_RANGE.get() + cachedPotentialSupports * SUPPORT_RANGE_BONUS);
     }
 
     private void refreshNeighborCache(Level level, BlockPos pos) {
@@ -261,7 +269,13 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
             Entity target = targetId == -1 ? null : level.getEntity(targetId);
             return target != null && target.isAlive();
         }
-        return targetType == 2 && targetPos != null && masterPos != null;
+        if (targetType == 2 && targetPos != null && masterPos != null && level != null) {
+            BlockEntity be = level.getBlockEntity(targetPos);
+            if (be instanceof PrismTowerBlockEntity parentTower) {
+                return parentTower.currentDepth >= 0 && parentTower.currentDepth < this.currentDepth;
+            }
+        }
+        return false;
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, PrismTowerBlockEntity be) {
@@ -273,8 +287,9 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         be.tickCounter++;
         if (be.tickCounter % NEIGHBOR_CACHE_INTERVAL == 0 || be.neighborCache.isEmpty()) {
             be.refreshNeighborCache(level, pos);
+            be.cachedEffectiveRange = be.getEffectiveScanRange();
         }
-        if (be.tickCounter % TARGET_CACHE_INTERVAL == 0 || be.monsterCache.isEmpty()) {
+        if (be.tickCounter % TARGET_CACHE_INTERVAL == 0) {
             be.refreshMonsterCache(level, pos);
         }
 
@@ -333,7 +348,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                 be.targetId = closestMonster.getId();
                 be.targetPos = null;
 
-                be.cachedSupportCount = be.computeSupportTree(pos);
+                be.cachedSupportCount = be.cachedPotentialSupports;
 
                 if (be.attackCooldown <= 0) {
                     be.warmupTicks++;
@@ -433,6 +448,14 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     public int getDepth() {
         return currentDepth;
+    }
+
+    public int getDyeColorIndex() {
+        return dyeColorIndex;
+    }
+
+    public void setDyeColorIndex(int index) {
+        this.dyeColorIndex = index;
     }
 
     @Override

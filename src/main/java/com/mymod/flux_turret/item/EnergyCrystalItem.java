@@ -1,5 +1,6 @@
 package com.mymod.flux_turret.item;
 
+import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -24,7 +25,7 @@ public class EnergyCrystalItem extends BlockItem {
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, level, tooltip, flag);
         int stored = getEnergyStored(stack);
-        int max = EnergyCrystalBlockEntity.CAPACITY;
+        int max = TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
         ChatFormatting color = stored > 0 ? ChatFormatting.AQUA : ChatFormatting.GRAY;
         tooltip.add(Component.literal(String.format("Energy: %d / %d FE", stored, max))
                 .withStyle(color));
@@ -40,7 +41,7 @@ public class EnergyCrystalItem extends BlockItem {
             return blockEntityTag.getCompound("Energy").getInt("energy");
         }
         // No NBT = freshly smelted = full charge
-        return EnergyCrystalBlockEntity.CAPACITY;
+        return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
     }
 
     public static boolean hasEnergyNBT(ItemStack stack) {

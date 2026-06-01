@@ -3,15 +3,13 @@ package com.mymod.flux_turret.block;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
+import com.mymod.flux_turret.util.ChargeHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.RenderShape;
@@ -54,54 +52,21 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
         if (level.isClientSide) return InteractionResult.SUCCESS;
         if (level.getBlockEntity(pos) instanceof EnergyCrystalBlockEntity be) {
             ItemStack heldItem = player.getItemInHand(hand);
-            
-            // Allow manual redstone dust charging
-            if (heldItem.is(Items.REDSTONE)) {
-                int capacity = be.getEnergyStorage().getMaxEnergyStored();
-                int current = be.getEnergyStorage().getEnergyStored();
-                if (current < capacity) {
-                    int received = be.getEnergyStorage().receiveEnergy(TurretConfig.ENERGY_CRYSTAL_REDSTONE_CHARGE.get(), false);
-                    if (received > 0) {
-                        if (!player.getAbilities().instabuild) {
-                            heldItem.shrink(1);
-                        }
-                        be.setChanged();
-                        level.sendBlockUpdated(pos, state, state, 3);
-                        level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 1.0f, 1.5f);
-                        player.displayClientMessage(
-                                net.minecraft.network.chat.Component.literal(String.format("Charged: +%d FE (Energy: %d / %d FE)", received, be.getEnergyStorage().getEnergyStored(), capacity)),
-                                true);
-                        return InteractionResult.SUCCESS;
-                    }
-                }
+
+            InteractionResult chargeResult = ChargeHelper.tryRedstoneCharge(
+                    level, pos, state, player, heldItem, be.getEnergyStorage(),
+                    TurretConfig.ENERGY_CRYSTAL_REDSTONE_CHARGE.get(),
+                    TurretConfig.ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE.get());
+            if (chargeResult != null) {
+                be.setChanged();
+                return chargeResult;
             }
-            
-            // Allow manual redstone block charging
-            if (heldItem.is(Items.REDSTONE_BLOCK)) {
-                int capacity = be.getEnergyStorage().getMaxEnergyStored();
-                int current = be.getEnergyStorage().getEnergyStored();
-                if (current < capacity) {
-                    int received = be.getEnergyStorage().receiveEnergy(TurretConfig.ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE.get(), false);
-                    if (received > 0) {
-                        if (!player.getAbilities().instabuild) {
-                            heldItem.shrink(1);
-                        }
-                        be.setChanged();
-                        level.sendBlockUpdated(pos, state, state, 3);
-                        level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 1.0f, 1.8f);
-                        player.displayClientMessage(
-                                net.minecraft.network.chat.Component.literal(String.format("Charged: +%d FE (Energy: %d / %d FE)", received, be.getEnergyStorage().getEnergyStored(), capacity)),
-                                true);
-                        return InteractionResult.SUCCESS;
-                    }
-                }
-            }
-            
+
             // Otherwise, display current charge info
             int stored = be.getEnergyStorage().getEnergyStored();
             int max = be.getEnergyStorage().getMaxEnergyStored();
             player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal(String.format("Energy: %d / %d FE", stored, max)),
+                    net.minecraft.network.chat.Component.literal(String.format("\u00a7b\u80fd\u91cf: %d / %d FE", stored, max)),
                     true);
         }
         return InteractionResult.CONSUME;

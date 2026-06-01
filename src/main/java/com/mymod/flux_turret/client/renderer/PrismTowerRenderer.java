@@ -9,6 +9,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
@@ -63,13 +64,25 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
         float startWidth, endWidth;
         int r, g, b, alpha;
 
+        int targetR = 0;
+        int targetG = 255;
+        int targetB = 255;
+
+        int colorIndex = be.getDyeColorIndex();
+        if (colorIndex >= 0 && colorIndex < 16) {
+            float[] diffuseColors = DyeColor.byId(colorIndex).getTextureDiffuseColors();
+            targetR = (int) (diffuseColors[0] * 255);
+            targetG = (int) (diffuseColors[1] * 255);
+            targetB = (int) (diffuseColors[2] * 255);
+        }
+
         if (isSupport) {
             float pulse = (float) Math.sin(gameTime * 0.5) * 0.01f;
             startWidth = 0.05f + pulse;
             endWidth = 0.05f + pulse;
-            r = 100;
-            g = 255;
-            b = 255;
+            r = Math.min(255, targetR + 100);
+            g = Math.min(255, targetG + 100);
+            b = Math.min(255, targetB + 100);
             alpha = 210;
         } else {
             float pulse = (float) Math.sin(gameTime * 0.5) * 0.025f;
@@ -77,9 +90,9 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
             float baseWidth = 0.16f + supportScale * 0.34f;
             startWidth = baseWidth * 0.45f + pulse;
             endWidth = baseWidth + pulse;
-            r = 0;
-            g = 255;
-            b = 255;
+            r = targetR;
+            g = targetG;
+            b = targetB;
             alpha = 255;
         }
 

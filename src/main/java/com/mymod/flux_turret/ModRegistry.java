@@ -9,6 +9,8 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.inventory.MenuType;
+import net.minecraftforge.common.extensions.IForgeMenuType;
 import net.minecraftforge.registries.RegistryObject;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
@@ -19,13 +21,16 @@ import com.mymod.flux_turret.block.EnergyCrystalBlock;
 import com.mymod.flux_turret.block.GatlingTurretBlock;
 import com.mymod.flux_turret.block.GrandCannonBlock;
 import com.mymod.flux_turret.block.PrismTowerBlock;
+import com.mymod.flux_turret.block.PsychicBeaconBlock;
 import com.mymod.flux_turret.block.TeslaCoilBlock;
 import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
 import com.mymod.flux_turret.block.entity.GatlingTurretBlockEntity;
 import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
 import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
+import com.mymod.flux_turret.block.entity.PsychicBeaconBlockEntity;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
 import com.mymod.flux_turret.item.EnergyCrystalItem;
+import com.mymod.flux_turret.menu.PsychicBeaconMenu;
 
 public class ModRegistry {
         public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS,
@@ -38,6 +43,8 @@ public class ModRegistry {
                         .create(Registries.CREATIVE_MODE_TAB, FluxTurretMod.MOD_ID);
         public static final DeferredRegister<net.minecraft.sounds.SoundEvent> SOUNDS = DeferredRegister
                         .create(ForgeRegistries.SOUND_EVENTS, FluxTurretMod.MOD_ID);
+        public static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister
+                        .create(ForgeRegistries.MENU_TYPES, FluxTurretMod.MOD_ID);
 
         public static final RegistryObject<net.minecraft.sounds.SoundEvent> GATLING_SHOOT = SOUNDS.register(
                         "gatling_shoot", () -> net.minecraft.sounds.SoundEvent.createVariableRangeEvent(
@@ -74,6 +81,10 @@ public class ModRegistry {
         public static final RegistryObject<Block> ENERGY_CRYSTAL_BLOCK = BLOCKS.register("energy_crystal",
                         () -> new EnergyCrystalBlock(BlockBehaviour.Properties.of().strength(3.0f).sound(SoundType.AMETHYST)
                                         .noOcclusion().lightLevel(state -> 8)));
+
+        public static final RegistryObject<Block> PSYCHIC_BEACON_BLOCK = BLOCKS.register("psychic_beacon",
+                        () -> new PsychicBeaconBlock(BlockBehaviour.Properties.of().strength(5.0f).sound(SoundType.METAL)
+                                        .noOcclusion().lightLevel(state -> state.getValue(PsychicBeaconBlock.LIT) ? 15 : 0)));
  
         public static final RegistryObject<Item> PRISM_TOWER_ITEM = ITEMS.register("prism_tower",
                         () -> new BlockItem(PRISM_TOWER_BLOCK.get(), new Item.Properties()));
@@ -92,6 +103,9 @@ public class ModRegistry {
 
         public static final RegistryObject<Item> EMPTY_CRYSTAL_ITEM = ITEMS.register("empty_crystal",
                         () -> new BlockItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
+
+        public static final RegistryObject<Item> PSYCHIC_BEACON_ITEM = ITEMS.register("psychic_beacon",
+                        () -> new BlockItem(PSYCHIC_BEACON_BLOCK.get(), new Item.Properties()));
  
         public static final RegistryObject<BlockEntityType<PrismTowerBlockEntity>> PRISM_TOWER_BE = BLOCK_ENTITY_TYPES
                         .register("prism_tower", () -> BlockEntityType.Builder
@@ -113,6 +127,13 @@ public class ModRegistry {
                         .register("energy_crystal", () -> BlockEntityType.Builder
                                         .of(EnergyCrystalBlockEntity::new, ENERGY_CRYSTAL_BLOCK.get()).build(null));
 
+        public static final RegistryObject<BlockEntityType<PsychicBeaconBlockEntity>> PSYCHIC_BEACON_BE = BLOCK_ENTITY_TYPES
+                        .register("psychic_beacon", () -> BlockEntityType.Builder
+                                        .of(PsychicBeaconBlockEntity::new, PSYCHIC_BEACON_BLOCK.get()).build(null));
+
+        public static final RegistryObject<MenuType<PsychicBeaconMenu>> PSYCHIC_BEACON_MENU = MENU_TYPES
+                        .register("psychic_beacon", () -> IForgeMenuType.create(PsychicBeaconMenu::new));
+
         public static final RegistryObject<CreativeModeTab> FLUX_TURRET_TAB = CREATIVE_MODE_TABS.register(
                         "flux_turret_tab",
                         () -> CreativeModeTab.builder()
@@ -125,6 +146,7 @@ public class ModRegistry {
                                                 output.accept(GRAND_CANNON_ITEM.get());
                                                 output.accept(EMPTY_CRYSTAL_ITEM.get());
                                                 output.accept(ENERGY_CRYSTAL_ITEM.get());
+                                                output.accept(PSYCHIC_BEACON_ITEM.get());
                                         }).build());
  
         public static void register(IEventBus eventBus) {
@@ -133,5 +155,6 @@ public class ModRegistry {
                 BLOCK_ENTITY_TYPES.register(eventBus);
                 CREATIVE_MODE_TABS.register(eventBus);
                 SOUNDS.register(eventBus);
+                MENU_TYPES.register(eventBus);
         }
 }

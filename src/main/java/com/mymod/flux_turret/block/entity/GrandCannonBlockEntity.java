@@ -27,7 +27,14 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
     private boolean formed = false;
 
     public GrandCannonBlockEntity(BlockPos pos, BlockState state) {
-        super(ModRegistry.GRAND_CANNON_BE.get(), pos, state, TurretConfig.GRAND_CANNON_CAPACITY.get(), MAX_RECEIVE);
+        super(ModRegistry.GRAND_CANNON_BE.get(), pos, state,
+                isCorePart(state) ? TurretConfig.GRAND_CANNON_CAPACITY.get() : 1,
+                isCorePart(state) ? MAX_RECEIVE : 0);
+    }
+
+    private static boolean isCorePart(BlockState state) {
+        return state.hasProperty(GrandCannonBlock.PART)
+                && state.getValue(GrandCannonBlock.PART) == GrandCannonBlock.CannonPart.BACK_LEFT;
     }
     
     private boolean isCore() {

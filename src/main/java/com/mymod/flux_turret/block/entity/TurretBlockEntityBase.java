@@ -211,13 +211,14 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     protected void refreshMonsterCache(Level level, BlockPos pos) {
         AABB scanArea = new AABB(pos).inflate(getTargetRange());
         monsterCache = level.getEntitiesOfClass(Monster.class, scanArea,
-                m -> m.isAlive() && isValidTarget(m, level, pos));
+                m -> m.isAlive() && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !m.hasCustomName()));
     }
 
     protected Monster findClosestMonster(Level level, BlockPos pos) {
         return monsterCache.stream()
+                .sorted(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
                 .filter(m -> isValidTarget(m, level, pos))
-                .min(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
+                .findFirst()
                 .orElse(null);
     }
 
@@ -236,7 +237,7 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
 
     protected void refreshMonsterCacheIfNeeded(Level level, BlockPos pos) {
         tickCounter++;
-        if (tickCounter % getTargetCacheInterval() == 0 || monsterCache.isEmpty())
+        if (tickCounter % getTargetCacheInterval() == 0)
             refreshMonsterCache(level, pos);
     }
 

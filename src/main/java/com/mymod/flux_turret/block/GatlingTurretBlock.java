@@ -12,7 +12,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class GatlingTurretBlock extends TurretBlockBase {
     public GatlingTurretBlock(Properties properties) {
-        super(properties, ModRegistry.GATLING_TURRET_BE);
+        super(properties, ModRegistry.GATLING_TURRET_BE, 2);
     }
 
     @Nullable

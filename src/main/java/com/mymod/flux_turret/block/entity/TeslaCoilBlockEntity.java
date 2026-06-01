@@ -18,6 +18,9 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     private static final int TARGET_CACHE_INTERVAL = 8;
 
     private int warmupTicks = 0;
+    private int overchargeTicks = 0;
+    private int manualClicksInWindow = 0;
+    private int clickWindowTimer = 0;
 
     public TeslaCoilBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.TESLA_COIL_BE.get(), pos, state, TurretConfig.TESLA_CAPACITY.get(), MAX_RECEIVE);
@@ -27,6 +30,9 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     public void registerControllers(software.bernie.geckolib.core.animation.AnimatableManager.ControllerRegistrar controllers) {
         controllers.add(new software.bernie.geckolib.core.animation.AnimationController<>(this, "controller", 0, state -> {
             if (this.isVisuallyPowered()) {
+                if (this.isOvercharged()) {
+                    return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.tesla_coil.overcharged"));
+                }
                 if (this.visualCountdown > 0) {
                     return state.setAndContinue(software.bernie.geckolib.core.animation.RawAnimation.begin().thenLoop("animation.tesla_coil.active"));
                 }
@@ -61,10 +67,59 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
         return TurretConfig.TESLA_FIRE_COST.get();
     }
 
+    @Override
+    protected void saveAdditionalTurret(CompoundTag tag) {
+        tag.putInt("OverchargeTicks", overchargeTicks);
+    }
+
+    @Override
+    protected void loadAdditionalTurret(CompoundTag tag) {
+        if (tag.contains("OverchargeTicks")) {
+            overchargeTicks = tag.getInt("OverchargeTicks");
+        }
+    }
+
+    public void performManualCrank() {
+        this.getEnergyStorage().receiveEnergy(500, false);
+
+        this.manualClicksInWindow++;
+        this.clickWindowTimer = 60;
+
+        if (this.manualClicksInWindow >= 5) {
+            this.overchargeTicks = 200;
+            this.manualClicksInWindow = 0;
+
+            if (this.level != null) {
+                this.level.playSound(null, this.worldPosition, SoundEvents.BEACON_ACTIVATE, SoundSource.BLOCKS, 1.0f, 1.8f);
+            }
+        }
+
+        this.setChanged();
+        if (this.level != null) {
+            this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
+        }
+    }
+
+    public boolean isOvercharged() {
+        return overchargeTicks > 0;
+    }
+
     public static void tick(Level level, BlockPos pos, BlockState state, TeslaCoilBlockEntity be) {
         if (level.isClientSide) {
             be.baseClientTick(level);
             return;
+        }
+
+        boolean prevOvercharged = be.overchargeTicks > 0;
+
+        if (be.clickWindowTimer > 0) {
+            be.clickWindowTimer--;
+            if (be.clickWindowTimer <= 0) {
+                be.manualClicksInWindow = 0;
+            }
+        }
+        if (be.overchargeTicks > 0) {
+            be.overchargeTicks--;
         }
 
         be.refreshMonsterCacheIfNeeded(level, pos);
@@ -90,8 +145,10 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
         boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= fireCost;
         be.visualHasEnergy = hasEnoughEnergy;
 
-        if (be.attackCooldown > 0)
-            be.attackCooldown--;
+        if (be.attackCooldown > 0) {
+            be.attackCooldown -= be.isOvercharged() ? 2 : 1;
+            if (be.attackCooldown < 0) be.attackCooldown = 0;
+        }
 
         Monster target = hasEnoughEnergy ? be.findClosestMonster(level, pos) : null;
 
@@ -105,8 +162,10 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                 be.warmupTicks++;
                 if (be.warmupTicks >= WARMUP_TICKS) {
                     if (be.getEnergyStorage().consumeEnergy(fireCost)) {
+                        float baseDamage = TurretConfig.TESLA_DAMAGE.get().floatValue();
+                        float finalDamage = be.isOvercharged() ? baseDamage * 1.5f : baseDamage;
                         target.invulnerableTime = 0;
-                        target.hurt(level.damageSources().magic(), TurretConfig.TESLA_DAMAGE.get().floatValue());
+                        target.hurt(level.damageSources().magic(), finalDamage);
                         level.playSound(null, pos, ModRegistry.TESLA_SHOOT.get(), SoundSource.BLOCKS, 0.75f, 1.0f);
                         be.isFiring = true;
                         be.lastFireTime = level.getGameTime();
@@ -124,8 +183,10 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             }
         }
 
+        boolean nowOvercharged = be.overchargeTicks > 0;
         if (be.targetId != prevTargetId || be.isFiring != prevFiring
-                || be.lastFireTime != prevFireTime || be.visualHasEnergy != prevHasEnergy) {
+                || be.lastFireTime != prevFireTime || be.visualHasEnergy != prevHasEnergy
+                || prevOvercharged != nowOvercharged) {
             be.setChanged();
             level.sendBlockUpdated(pos, state, state, 3);
         }

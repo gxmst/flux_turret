@@ -4,12 +4,14 @@
     "block.flux_turret.gatling_turret": "加特林炮塔",
     "block.flux_turret.grand_cannon": "巨炮",
     "block.flux_turret.energy_crystal": "能量晶体",
+    "block.flux_turret.psychic_beacon": "心灵信标",
     "item.flux_turret.prism_tower": "光凌塔",
     "item.flux_turret.tesla_coil": "特斯拉线圈",
     "item.flux_turret.gatling_turret": "加特林炮塔",
     "item.flux_turret.grand_cannon": "巨炮",
     "item.flux_turret.energy_crystal": "能量晶体",
     "item.flux_turret.empty_crystal": "空能量晶体",
+    "item.flux_turret.psychic_beacon": "心灵信标",
     "itemGroup.flux_turret": "gxFlux",
     "subtitles.flux_turret.gatling_shoot": "加特林炮塔：开火",
     "subtitles.flux_turret.tesla_shoot": "特斯拉线圈：放电",
@@ -21,5 +23,7 @@
     "tooltip.flux_turret.grand_cannon": "超级超级大的雪玉投掷器！轰的一下就把坏人全部炸飞，而且超级环保！",
     "tooltip.flux_turret.energy_crystal": "亮晶晶的能量石！放在炮塔旁边就能自动供电！也可以放在燃着的熔炉上方慢慢充能！",
     "tooltip.flux_turret.empty_crystal": "灰扑扑的空晶体……丢进熔炉里烧一烧，就能变成亮晶晶的能量晶体啦！",
-    "flux_turret.config.title": "gxFlux 配置"
+    "tooltip.flux_turret.psychic_beacon": "用金属方块搭成金字塔底座，用红石充能！白天广播增益Buff，夜晚诱捕怪潮围攻！坚守到日出即可获得补给箱！",
+    "flux_turret.config.title": "gxFlux 配置",
+    "container.flux_turret.psychic_beacon": "心灵雷达控制面板"
 }
