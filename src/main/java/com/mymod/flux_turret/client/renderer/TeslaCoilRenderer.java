@@ -4,6 +4,7 @@ import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
 import com.mymod.flux_turret.client.model.TeslaCoilModel;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
@@ -15,6 +16,8 @@ import software.bernie.geckolib.renderer.GeoBlockRenderer;
 import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 
 public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEntity> {
+    private static final double IDLE_CURRENT_RENDER_DISTANCE_SQR = 36.0D * 36.0D;
+
     private final GeoBlockRenderer<TeslaCoilBlockEntity> geckoRenderer;
 
     public TeslaCoilRenderer(BlockEntityRendererProvider.Context context) {
@@ -30,7 +33,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
         if (be.getLevel() == null)
             return;
 
-        if (be.isVisuallyPowered())
+        if (be.isVisuallyPowered() && shouldRenderIdleCurrent(be))
             renderIdleCurrent(be, poseStack, bufferSource);
 
         long timeDiff = be.getLevel().getGameTime() - be.getLastFireTime();
@@ -49,6 +52,11 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
         }
     }
 
+    private boolean shouldRenderIdleCurrent(TeslaCoilBlockEntity be) {
+        Vec3 cameraPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        return Vec3.atCenterOf(be.getBlockPos()).distanceToSqr(cameraPos) <= IDLE_CURRENT_RENDER_DISTANCE_SQR;
+    }
+
     private void renderIdleCurrent(TeslaCoilBlockEntity be, PoseStack poseStack, MultiBufferSource bufferSource) {
         VertexConsumer buffer = bufferSource.getBuffer(RenderType.lightning());
         Matrix4f matrix = poseStack.last().pose();
@@ -57,7 +65,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
         for (int strand = 0; strand < 2; strand++) {
             double phase = time + strand * Math.PI;
             Vec3 previous = null;
-            int segments = 12;
+            int segments = 8;
 
             for (int i = 0; i <= segments; i++) {
                 double t = i / (double) segments;

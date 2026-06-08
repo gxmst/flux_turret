@@ -70,7 +70,7 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        return level.isClientSide ? null : createTickerHelper(type, ModRegistry.PSYCHIC_BEACON_BE.get(), PsychicBeaconBlockEntity::tick);
+        return createTickerHelper(type, ModRegistry.PSYCHIC_BEACON_BE.get(), PsychicBeaconBlockEntity::tick);
     }
 
     @Override

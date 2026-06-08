@@ -16,8 +16,12 @@ import net.minecraft.util.RandomSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Husk;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Vex;
 import net.minecraft.world.MenuProvider;
@@ -58,6 +62,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
 
     public static final int MAX_RECEIVE = 1000;
+    private static final String BEACON_SPAWN_TAG = "FluxTurretBeaconSpawn";
+    private static final String BEACON_POS_TAG = "FluxTurretBeaconPos";
+    private static final int MONSTER_COUNT_RADIUS = 32;
+    private static final int SPAWN_CLEANUP_RADIUS = 48;
+
+    // Constants for better code readability
+    private static final int SLEEP_PREVENTION_RADIUS = 100;
+    private static final int DEATH_DETECTION_RADIUS = 32;
 
     public static final int STATE_OFFLINE = 0;
     public static final int STATE_IDLE = 1;
@@ -162,6 +174,39 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return count;
     }
 
+    private void refreshNearbyTurretCounts() {
+        if (level == null) return;
+
+        int prism = 0;
+        int tesla = 0;
+        int gatling = 0;
+        int cx = worldPosition.getX() >> 4;
+        int cz = worldPosition.getZ() >> 4;
+
+        for (int dx = -2; dx <= 2; dx++) {
+            for (int dz = -2; dz <= 2; dz++) {
+                if (!level.hasChunk(cx + dx, cz + dz)) continue;
+
+                net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunk(cx + dx, cz + dz);
+                for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
+                    if (blockEntity.getBlockPos().distManhattan(worldPosition) > 32) continue;
+
+                    if (blockEntity instanceof PrismTowerBlockEntity) {
+                        prism++;
+                    } else if (blockEntity instanceof TeslaCoilBlockEntity) {
+                        tesla++;
+                    } else if (blockEntity instanceof GatlingTurretBlockEntity) {
+                        gatling++;
+                    }
+                }
+            }
+        }
+
+        cachedTurretCounts[0] = prism;
+        cachedTurretCounts[1] = tesla;
+        cachedTurretCounts[2] = gatling;
+    }
+
     public long getTimeUntilDawn() {
         if (level == null) return 0;
         long dayTime = level.getDayTime() % 24000;
@@ -181,6 +226,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         int prevState = be.beaconState;
 
         if (!be.enabled && be.beaconState != STATE_OFFLINE) {
+            if (be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING) {
+                cleanupBeaconSpawnedMonsters(level, pos);
+            }
             be.beaconState = STATE_OFFLINE;
         }
 
@@ -205,9 +253,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
         be.turretScanCooldown--;
         if (be.turretScanCooldown <= 0) {
-            be.cachedTurretCounts[0] = be.countNearbyTurrets(PrismTowerBlockEntity.class);
-            be.cachedTurretCounts[1] = be.countNearbyTurrets(TeslaCoilBlockEntity.class);
-            be.cachedTurretCounts[2] = be.countNearbyTurrets(GatlingTurretBlockEntity.class);
+            be.refreshNearbyTurretCounts();
             be.turretScanCooldown = 20;
         }
 
@@ -258,12 +304,13 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         long dayTime = level.getDayTime() % 24000;
         if (dayTime >= 13000 && dayTime < 23000) {
             be.beaconState = STATE_ACTIVE;
-            be.spawnTimer = 0;
+            be.spawnTimer = TurretConfig.PSYCHIC_BEACON_SPAWN_INTERVAL.get() / 2;
         }
     }
 
     private static void tickActive(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
         if (be.energyStorage.getEnergyStored() <= 0) {
+            cleanupBeaconSpawnedMonsters(level, pos);
             be.beaconState = STATE_OFFLINE;
             return;
         }
@@ -273,7 +320,11 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             be.warningTimer = 60;
             Player nearest = findNearestPlayer(level, pos, 50);
             if (nearest != null) {
-                nearest.displayClientMessage(Component.literal("\u00a7e[\u8b66\u544a] \u68c0\u6d4b\u5230\u5916\u90e8\u7ea2\u77f3\u5e72\u6270\uff01\u4fe1\u6807\u5b89\u5168\u9501\u5c06\u57283\u79d2\u5185\u65ad\u5f00\uff01"), true);
+                nearest.displayClientMessage(
+                    Component.translatable("message.flux_turret.beacon_warning")
+                        .withStyle(net.minecraft.ChatFormatting.YELLOW),
+                    true
+                );
             }
             return;
         }
@@ -282,7 +333,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
         long dayTime = level.getDayTime() % 24000;
         if (dayTime < 13000 || dayTime >= 23000) {
+            cleanupBeaconSpawnedMonsters(level, pos);
             be.beaconState = STATE_IDLE;
+            be.spawnTimer = 0;
             return;
         }
 
@@ -303,7 +356,11 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             be.warningTimer = 0;
             Player nearest = findNearestPlayer(level, pos, 50);
             if (nearest != null) {
-                nearest.displayClientMessage(Component.literal("\u00a7a\u7ea2\u77f3\u4fe1\u53f7\u5df2\u65ad\u5f00\uff0c\u4fe1\u6807\u6062\u590d\u6218\u6597\u8fd0\u8f6c\uff01"), true);
+                nearest.displayClientMessage(
+                    Component.translatable("message.flux_turret.beacon_resumed")
+                        .withStyle(net.minecraft.ChatFormatting.GREEN),
+                    true
+                );
             }
             return;
         }
@@ -344,7 +401,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         if (this.todayKills < TurretConfig.PSYCHIC_BEACON_MIN_KILLS.get()) {
             if (level != null) {
                 level.playSound(null, worldPosition, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0f, 0.8f);
-                displayMessageToNearbyPlayers("\u00a7e[\u5fc3\u7075\u96f7\u8fbe] \u4eca\u65e5\u9632\u533a\u65e0\u8db3\u591f\u5b89\u5168\u5a01\u80c1\uff0c\u65e0\u987b\u964d\u4e0b\u8865\u7ed9\u7bb1\u3002");
+                displayMessageToNearbyPlayers(
+                    Component.translatable("message.flux_turret.beacon_defense_none")
+                        .withStyle(net.minecraft.ChatFormatting.YELLOW)
+                );
             }
             this.todayKills = 0;
             setChanged();
@@ -354,7 +414,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         if (this.energyStorage.getEnergyStored() < TurretConfig.PSYCHIC_BEACON_DAWN_COST.get()) {
             if (level != null) {
                 level.playSound(null, worldPosition, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0f, 0.5f);
-                displayMessageToNearbyPlayers("\u00a7c[\u8b66\u544a] \u5fc3\u7075\u80fd\u91cf\u4e0d\u8db3 " + TurretConfig.PSYCHIC_BEACON_DAWN_COST.get() + " FE\uff01\u5b9d\u7bb1\u5408\u6210\u5931\u8d25\uff01");
+                displayMessageToNearbyPlayers(
+                    Component.translatable("message.flux_turret.beacon_energy_low", TurretConfig.PSYCHIC_BEACON_DAWN_COST.get())
+                        .withStyle(net.minecraft.ChatFormatting.RED)
+                );
             }
             this.todayKills = 0;
             setChanged();
@@ -372,11 +435,17 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                     fillVictoryChestDynamic(level, worldPosition, chest, this.threatLevel, this.todayKills);
                 }
             } else {
-                displayMessageToNearbyPlayers("\u00a7c[\u8b66\u544a] \u627e\u4e0d\u5230\u5408\u9002\u7684\u4f4d\u7f6e\u653e\u7f6e\u8865\u7ed9\u7bb1\uff01");
+                displayMessageToNearbyPlayers(
+                    Component.translatable("message.flux_turret.beacon_no_chest_space")
+                        .withStyle(net.minecraft.ChatFormatting.RED)
+                );
             }
 
             level.playSound(null, worldPosition, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.BLOCKS, 1.0f, 1.0f);
-            displayMessageToNearbyPlayers("\u00a7b[\u5fc3\u7075\u96f7\u8fbe] \u4eca\u65e5\u9632\u533a\u6218\u5f79\u9632\u536b\u6210\u529f\uff01\u8865\u7ed9\u7bb1\u5df2\u5408\u6210\u964d\u4e0b\uff01");
+            displayMessageToNearbyPlayers(
+                Component.translatable("message.flux_turret.beacon_defense_success")
+                    .withStyle(net.minecraft.ChatFormatting.AQUA)
+            );
         }
 
         this.todayKills = 0;
@@ -387,66 +456,86 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
     }
 
-    private void displayMessageToNearbyPlayers(String message) {
+    private void displayMessageToNearbyPlayers(Component message) {
         if (level == null) return;
         AABB area = new AABB(worldPosition).inflate(50);
         List<Player> players = level.getEntitiesOfClass(Player.class, area);
         for (Player player : players) {
-            player.displayClientMessage(Component.literal(message), true);
+            player.displayClientMessage(message, true);
         }
     }
 
     private static void spawnWave(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        AABB countArea = new AABB(pos).inflate(32);
-        List<net.minecraft.world.entity.monster.Monster> existingMonsters = level.getEntitiesOfClass(
-                net.minecraft.world.entity.monster.Monster.class, countArea);
-        if (existingMonsters.size() >= TurretConfig.PSYCHIC_BEACON_MAX_MONSTERS.get()) return;
+        AABB countArea = new AABB(pos).inflate(MONSTER_COUNT_RADIUS);
+        List<Monster> existingMonsters = level.getEntitiesOfClass(Monster.class, countArea);
+        int remaining = TurretConfig.PSYCHIC_BEACON_MAX_MONSTERS.get() - existingMonsters.size();
+        if (remaining <= 0) return;
 
-        int tl = be.threatLevel;
+        int tl = Math.max(0, Math.min(4, be.threatLevel));
         RandomSource random = level.random;
+        int waveBudget = Math.min(remaining, 2 + tl);
 
-        spawnHusks(level, pos, random, tl >= 0 ? 2 + random.nextInt(2) : 0);
+        int huskCount = Math.min(waveBudget, 1 + random.nextInt(2) + (tl >= 3 ? 1 : 0));
+        waveBudget -= spawnHusks(level, pos, random, huskCount, tl);
+        if (waveBudget <= 0) return;
 
-        if (tl >= 2) {
-            spawnSpiders(level, pos, random, 1 + random.nextInt(2));
+        if (tl >= 1) {
+            int spiderCount = Math.min(waveBudget, tl >= 3 ? 2 : 1);
+            waveBudget -= spawnSpiders(level, pos, random, spiderCount, tl);
+            if (waveBudget <= 0) return;
         }
 
-        if (tl >= 3) {
-            spawnVexes(level, pos, random, 1 + random.nextInt(2));
+        if (tl >= 3 && random.nextFloat() < 0.65f) {
+            waveBudget -= spawnVexes(level, pos, random, Math.min(waveBudget, 1), tl);
+            if (waveBudget <= 0) return;
         }
 
-        if (tl >= 4) {
-            spawnChargedCreeper(level, pos, random);
+        if (tl >= 4 && random.nextFloat() < 0.35f) {
+            waveBudget -= spawnChargedCreeper(level, pos, random);
+            if (waveBudget <= 0) return;
+        }
+
+        if (be.stability < TurretConfig.PSYCHIC_BEACON_STABILITY.get() / 2 && random.nextFloat() < 0.5f) {
+            spawnHusks(level, pos, random, Math.min(waveBudget, 1), tl);
         }
     }
 
-    private static void spawnHusks(Level level, BlockPos pos, RandomSource random, int count) {
+    private static int spawnHusks(Level level, BlockPos pos, RandomSource random, int count, int threatLevel) {
+        int spawned = 0;
         for (int i = 0; i < count; i++) {
             BlockPos spawnPos = findSpawnPos(level, pos, random);
             if (spawnPos == null) continue;
             Husk husk = EntityType.HUSK.create(level);
             if (husk == null) continue;
             husk.moveTo(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, random.nextFloat() * 360F, 0);
-            husk.setPersistenceRequired();
+            applyEliteHealth(husk, getGroundEliteHealth(threatLevel, random));
+            markBeaconSpawn(husk, pos);
             husk.goalSelector.addGoal(1, new MoveToBeaconGoal(husk, pos, 1.0D));
             level.addFreshEntity(husk);
+            spawned++;
         }
+        return spawned;
     }
 
-    private static void spawnSpiders(Level level, BlockPos pos, RandomSource random, int count) {
+    private static int spawnSpiders(Level level, BlockPos pos, RandomSource random, int count, int threatLevel) {
+        int spawned = 0;
         for (int i = 0; i < count; i++) {
             BlockPos spawnPos = findSpawnPos(level, pos, random);
             if (spawnPos == null) continue;
             Spider spider = EntityType.SPIDER.create(level);
             if (spider == null) continue;
             spider.moveTo(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, random.nextFloat() * 360F, 0);
-            spider.setPersistenceRequired();
+            applyEliteHealth(spider, getGroundEliteHealth(threatLevel, random));
+            markBeaconSpawn(spider, pos);
             spider.goalSelector.addGoal(1, new MoveToBeaconGoal(spider, pos, 1.0D));
             level.addFreshEntity(spider);
+            spawned++;
         }
+        return spawned;
     }
 
-    private static void spawnVexes(Level level, BlockPos pos, RandomSource random, int count) {
+    private static int spawnVexes(Level level, BlockPos pos, RandomSource random, int count, int threatLevel) {
+        int spawned = 0;
         for (int i = 0; i < count; i++) {
             BlockPos spawnPos = findSpawnPos(level, pos, random);
             if (spawnPos == null) continue;
@@ -454,22 +543,79 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             if (vex == null) continue;
             vex.moveTo(spawnPos.getX() + 0.5, spawnPos.getY() + 1, spawnPos.getZ() + 0.5, random.nextFloat() * 360F, 0);
             vex.setLimitedLife(2400);
-            vex.setPersistenceRequired();
+            applyEliteHealth(vex, threatLevel >= 4 ? 60.0F : 40.0F);
+            markBeaconSpawn(vex, pos);
             vex.goalSelector.addGoal(1, new MoveToBeaconGoal(vex, pos, 1.0D));
             level.addFreshEntity(vex);
+            spawned++;
+        }
+        return spawned;
+    }
+
+    private static int spawnChargedCreeper(Level level, BlockPos pos, RandomSource random) {
+        BlockPos spawnPos = findSpawnPos(level, pos, random);
+        if (spawnPos == null) return 0;
+        Creeper creeper = EntityType.CREEPER.create(level);
+        if (creeper == null) return 0;
+        creeper.moveTo(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, random.nextFloat() * 360F, 0);
+        creeper.getEntityData().set(Creeper.DATA_IS_POWERED, true);
+        applyEliteHealth(creeper, 100.0F);
+        markBeaconSpawn(creeper, pos);
+        creeper.goalSelector.addGoal(1, new MoveToBeaconGoal(creeper, pos, 1.0D));
+        level.addFreshEntity(creeper);
+        return 1;
+    }
+
+    private static float getGroundEliteHealth(int threatLevel, RandomSource random) {
+        if (threatLevel >= 4 && random.nextFloat() < 0.30F) {
+            return 100.0F;
+        }
+        if (threatLevel >= 2) {
+            return 60.0F;
+        }
+        return 40.0F;
+    }
+
+    private static void applyEliteHealth(Mob mob, float maxHealth) {
+        AttributeInstance maxHealthAttribute = mob.getAttribute(Attributes.MAX_HEALTH);
+        if (maxHealthAttribute != null) {
+            maxHealthAttribute.setBaseValue(maxHealth);
+            mob.setHealth(maxHealth);
         }
     }
 
-    private static void spawnChargedCreeper(Level level, BlockPos pos, RandomSource random) {
-        BlockPos spawnPos = findSpawnPos(level, pos, random);
-        if (spawnPos == null) return;
-        Creeper creeper = EntityType.CREEPER.create(level);
-        if (creeper == null) return;
-        creeper.moveTo(spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5, random.nextFloat() * 360F, 0);
-        creeper.getEntityData().set(Creeper.DATA_IS_POWERED, true);
-        creeper.setPersistenceRequired();
-        creeper.goalSelector.addGoal(1, new MoveToBeaconGoal(creeper, pos, 1.0D));
-        level.addFreshEntity(creeper);
+    private static void markBeaconSpawn(Mob mob, BlockPos beaconPos) {
+        CompoundTag data = mob.getPersistentData();
+        data.putBoolean(BEACON_SPAWN_TAG, true);
+        data.putLong(BEACON_POS_TAG, beaconPos.asLong());
+    }
+
+    @Nullable
+    public static BlockPos getBeaconSpawnPos(Mob mob) {
+        CompoundTag data = mob.getPersistentData();
+        if (!data.getBoolean(BEACON_SPAWN_TAG) || !data.contains(BEACON_POS_TAG)) {
+            return null;
+        }
+        return BlockPos.of(data.getLong(BEACON_POS_TAG));
+    }
+
+    private static boolean isBeaconSpawn(Mob mob, BlockPos beaconPos) {
+        BlockPos taggedPos = getBeaconSpawnPos(mob);
+        return taggedPos != null && taggedPos.equals(beaconPos);
+    }
+
+    private static void cleanupBeaconSpawnedMonsters(Level level, BlockPos pos) {
+        AABB clearArea = new AABB(pos).inflate(SPAWN_CLEANUP_RADIUS);
+        List<Monster> monsters = level.getEntitiesOfClass(Monster.class, clearArea);
+        for (Monster monster : monsters) {
+            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster)) {
+                monster.discard();
+            }
+        }
+    }
+
+    private static boolean hasMoveToBeaconGoal(Monster monster) {
+        return monster.goalSelector.getAvailableGoals().stream().anyMatch(g -> g.getGoal() instanceof MoveToBeaconGoal);
     }
 
     @Nullable
@@ -519,8 +665,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static void failAndExplode(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
         be.beaconState = STATE_FAILED;
         be.todayKills = 0;
+        cleanupBeaconSpawnedMonsters(level, pos);
 
-        level.explode(null, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5, 5.0f, Level.ExplosionInteraction.NONE);
+        // Use BLOCK interaction mode to respect explosion protection
+        level.explode(null, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5, 5.0f, Level.ExplosionInteraction.BLOCK);
 
         RandomSource random = level.random;
         if (random.nextFloat() < 0.5f) {
@@ -548,11 +696,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private static void emergencyShutdown(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        AABB clearArea = new AABB(pos).inflate(32);
-        List<net.minecraft.world.entity.monster.Monster> monsters = level.getEntitiesOfClass(
-                net.minecraft.world.entity.monster.Monster.class, clearArea);
-        for (net.minecraft.world.entity.monster.Monster monster : monsters) {
-            if (monster.goalSelector.getAvailableGoals().stream().anyMatch(g -> g.getGoal() instanceof MoveToBeaconGoal)) {
+        AABB clearArea = new AABB(pos).inflate(SPAWN_CLEANUP_RADIUS);
+        List<Monster> monsters = level.getEntitiesOfClass(Monster.class, clearArea);
+        for (Monster monster : monsters) {
+            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster)) {
                 monster.discard();
             }
         }

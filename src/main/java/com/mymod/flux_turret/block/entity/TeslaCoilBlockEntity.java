@@ -15,7 +15,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     private static final int MAX_RECEIVE = 1200;
     private static final int WARMUP_TICKS = 8;
     private static final int ATTACK_COOLDOWN = 24;
-    private static final int TARGET_CACHE_INTERVAL = 8;
+    private static final int TARGET_CACHE_INTERVAL = 12;
 
     private int warmupTicks = 0;
     private int overchargeTicks = 0;
@@ -122,8 +122,6 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             be.overchargeTicks--;
         }
 
-        be.refreshMonsterCacheIfNeeded(level, pos);
-
         int prevTargetId = be.targetId;
         boolean prevFiring = be.isFiring;
         long prevFireTime = be.lastFireTime;
@@ -150,6 +148,12 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             if (be.attackCooldown < 0) be.attackCooldown = 0;
         }
 
+        if (hasEnoughEnergy) {
+            be.refreshMonsterCacheIfNeeded(level, pos);
+        } else {
+            be.monsterCache = java.util.List.of();
+        }
+
         Monster target = hasEnoughEnergy ? be.findClosestMonster(level, pos) : null;
 
         if (target == null) {
@@ -164,6 +168,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                     if (be.getEnergyStorage().consumeEnergy(fireCost)) {
                         float baseDamage = TurretConfig.TESLA_DAMAGE.get().floatValue();
                         float finalDamage = be.isOvercharged() ? baseDamage * 1.5f : baseDamage;
+                        // Reset invulnerability to ensure damage is applied
                         target.invulnerableTime = 0;
                         target.hurt(level.damageSources().magic(), finalDamage);
                         level.playSound(null, pos, ModRegistry.TESLA_SHOOT.get(), SoundSource.BLOCKS, 0.75f, 1.0f);

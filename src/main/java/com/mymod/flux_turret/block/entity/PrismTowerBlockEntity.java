@@ -52,6 +52,10 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private double cachedEffectiveRange = -1;
     private int cachedPotentialSupports = 0;
 
+    // Performance optimization: mark support tree as dirty only when needed
+    private boolean supportTreeDirty = true;
+    private int supportTreeRecalcCooldown = 0;
+
     private List<PrismTowerBlockEntity> neighborCache = List.of();
 
     public PrismTowerBlockEntity(BlockPos pos, BlockState state) {
@@ -146,7 +150,12 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     }
 
     private double getEffectiveScanRange() {
-        cachedPotentialSupports = computePotentialSupportCount();
+        // Only recalculate if marked dirty and cooldown expired
+        if (supportTreeDirty && supportTreeRecalcCooldown <= 0) {
+            cachedPotentialSupports = computePotentialSupportCount();
+            supportTreeDirty = false;
+            supportTreeRecalcCooldown = 40; // 2 seconds minimum between recalculations
+        }
         return Math.min(MAX_MONSTER_SCAN_RANGE, TurretConfig.PRISM_RANGE.get() + cachedPotentialSupports * SUPPORT_RANGE_BONUS);
     }
 
@@ -170,6 +179,8 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
             }
         }
         neighborCache = result;
+        // Mark support tree dirty when neighbors change
+        supportTreeDirty = true;
     }
 
     private int computePotentialSupportCount() {
@@ -285,6 +296,12 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         }
 
         be.tickCounter++;
+
+        // Decrement support tree recalc cooldown
+        if (be.supportTreeRecalcCooldown > 0) {
+            be.supportTreeRecalcCooldown--;
+        }
+
         if (be.tickCounter % NEIGHBOR_CACHE_INTERVAL == 0 || be.neighborCache.isEmpty()) {
             be.refreshNeighborCache(level, pos);
             be.cachedEffectiveRange = be.getEffectiveScanRange();
@@ -356,6 +373,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                         int damageSupports = Math.min(be.cachedSupportCount, DAMAGE_SUPPORT_CAP);
                         float damage = TurretConfig.PRISM_DAMAGE.get().floatValue() * (1.0f + damageSupports * SUPPORT_DAMAGE_MULT);
                         if (be.getEnergyStorage().consumeEnergy(TurretConfig.PRISM_MASTER_FIRE_COST.get())) {
+                            // Reset invulnerability to ensure damage is applied
                             closestMonster.invulnerableTime = 0;
                             closestMonster.hurt(level.damageSources().magic(), damage);
                             level.playSound(null, pos, ModRegistry.PRISM_SHOOT.get(), SoundSource.BLOCKS, 0.25f, 0.6f + level.random.nextFloat() * 0.08f);

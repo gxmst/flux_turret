@@ -5,6 +5,7 @@ import com.mymod.flux_turret.TurretConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -17,13 +18,9 @@ import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEntity {
-    public static final int CAPACITY = 100000;
-    public static final int MAX_OUTPUT = 200;
-    public static final int CHARGE_RATE = 50; // FE per tick from furnace
-
     private static final int TICK_INTERVAL = 5;
 
-    private final EnergyStorage energyStorage;
+    private final ConfigurableEnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyCap;
 
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
@@ -33,12 +30,17 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public EnergyCrystalBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.ENERGY_CRYSTAL_BE.get(), pos, state);
-        this.energyStorage = new EnergyStorage(CAPACITY, CAPACITY, MAX_OUTPUT * TICK_INTERVAL, 0);
+        this.energyStorage = new ConfigurableEnergyStorage();
         this.energyCap = LazyOptional.of(() -> this.energyStorage);
     }
 
     public EnergyStorage getEnergyStorage() {
         return energyStorage;
+    }
+
+    public void setEnergyStored(int energy) {
+        energyStorage.setEnergy(energy);
+        setChanged();
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, EnergyCrystalBlockEntity be) {
@@ -49,10 +51,11 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             return;
         }
 
+        be.energyStorage.applyConfig();
         be.tickCounter++;
         if (be.tickCounter % TICK_INTERVAL != 0) return;
 
-        int capacity = TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
+        int capacity = be.energyStorage.getMaxEnergyStored();
         int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get() * TICK_INTERVAL;
         int maxOutput = TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * TICK_INTERVAL;
 
@@ -164,6 +167,85 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
     @Override
     public AnimatableInstanceCache getAnimatableInstanceCache() {
         return cache;
+    }
+
+    private static class ConfigurableEnergyStorage extends EnergyStorage {
+        ConfigurableEnergyStorage() {
+            super(getConfiguredCapacity(), getConfiguredCapacity(), getConfiguredMaxExtract(), 0);
+        }
+
+        void applyConfig() {
+            this.capacity = getConfiguredCapacity();
+            this.maxReceive = this.capacity;
+            this.maxExtract = getConfiguredMaxExtract();
+            this.energy = Math.max(0, Math.min(this.energy, this.capacity));
+        }
+
+        void setEnergy(int energy) {
+            applyConfig();
+            this.energy = Math.max(0, Math.min(energy, this.capacity));
+        }
+
+        @Override
+        public int receiveEnergy(int maxReceive, boolean simulate) {
+            applyConfig();
+            return super.receiveEnergy(maxReceive, simulate);
+        }
+
+        @Override
+        public int extractEnergy(int maxExtract, boolean simulate) {
+            applyConfig();
+            return super.extractEnergy(maxExtract, simulate);
+        }
+
+        @Override
+        public int getEnergyStored() {
+            applyConfig();
+            return super.getEnergyStored();
+        }
+
+        @Override
+        public int getMaxEnergyStored() {
+            applyConfig();
+            return super.getMaxEnergyStored();
+        }
+
+        @Override
+        public boolean canExtract() {
+            applyConfig();
+            return super.canExtract();
+        }
+
+        @Override
+        public boolean canReceive() {
+            applyConfig();
+            return super.canReceive();
+        }
+
+        @Override
+        public Tag serializeNBT() {
+            applyConfig();
+            return super.serializeNBT();
+        }
+
+        @Override
+        public void deserializeNBT(Tag nbt) {
+            applyConfig();
+            if (nbt instanceof CompoundTag compoundTag) {
+                setEnergy(compoundTag.getInt("energy"));
+                return;
+            }
+            super.deserializeNBT(nbt);
+            applyConfig();
+        }
+
+        private static int getConfiguredCapacity() {
+            return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
+        }
+
+        private static int getConfiguredMaxExtract() {
+            return TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * TICK_INTERVAL;
+        }
     }
 
     @Override

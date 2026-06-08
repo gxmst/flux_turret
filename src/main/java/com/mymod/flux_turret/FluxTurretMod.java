@@ -41,6 +41,10 @@ public class FluxTurretMod {
     public static final String MOD_ID = "flux_turret";
     private static final Logger LOGGER = LogManager.getLogger();
 
+    // Constants for beacon detection
+    private static final int BEACON_SLEEP_PREVENTION_RADIUS = 100;
+    private static final int BEACON_DEATH_DETECTION_RADIUS = 32;
+
     public FluxTurretMod() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
@@ -59,7 +63,7 @@ public class FluxTurretMod {
 
         GeckoLib.initialize();
 
-        LOGGER.info("gxFlux Mod Initialized");
+        LOGGER.info("gxFlux Mod Initialized - Version {}", TurretConfig.SPEC.isLoaded() ? "Loaded" : "Loading");
     }
 
     @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
@@ -87,8 +91,9 @@ public class FluxTurretMod {
         @SubscribeEvent
         public static void onItemTooltip(ItemTooltipEvent event) {
             if (event.getItemStack().getItem() instanceof BlockItem blockItem) {
-                String blockId = blockItem.getBlock().getDescriptionId()
-                        .replace("block.", "tooltip.");
+                String blockId = event.getItemStack().getDescriptionId()
+                        .replace("block.", "tooltip.")
+                        .replace("item.", "tooltip.");
                 Component tooltip = Component.translatable(blockId);
                 if (tooltip.getString() != null && !tooltip.getString().equals(blockId)) {
                     event.getToolTip().add(tooltip);
@@ -105,9 +110,13 @@ public class FluxTurretMod {
             Level level = player.level();
             if (level.isClientSide) return;
             BlockPos playerPos = player.blockPosition();
-            if (findNearbyActiveBeacon(level, playerPos, 100) != null) {
+            if (findNearbyActiveBeacon(level, playerPos, BEACON_SLEEP_PREVENTION_RADIUS) != null) {
                 event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
-                player.displayClientMessage(Component.literal("\u00a7c\u5f3a\u70c8\u7684\u5fc3\u7075\u6ce2\u5728\u7a7a\u6c14\u4e2d\u6fc0\u8361\u2026\u2026\u4f60\u7684\u5927\u8111\u6781\u5ea6\u4ea2\u594b\uff0c\u65e0\u6cd5\u5165\u7761\uff01"), true);
+                player.displayClientMessage(
+                    Component.translatable("message.flux_turret.psychic_wave")
+                        .withStyle(net.minecraft.ChatFormatting.RED),
+                    true
+                );
             }
         }
 
@@ -117,8 +126,18 @@ public class FluxTurretMod {
                 Level level = monster.level();
                 if (level.isClientSide) return;
 
+                BlockPos spawnedByBeaconPos = PsychicBeaconBlockEntity.getBeaconSpawnPos(monster);
+                if (spawnedByBeaconPos != null) {
+                    BlockEntity blockEntity = level.getBlockEntity(spawnedByBeaconPos);
+                    if (blockEntity instanceof PsychicBeaconBlockEntity beacon
+                            && beacon.getBeaconState() == PsychicBeaconBlockEntity.STATE_ACTIVE) {
+                        beacon.incrementTodayKills();
+                        return;
+                    }
+                }
+
                 BlockPos deathPos = monster.blockPosition();
-                PsychicBeaconBlockEntity beacon = findNearbyActiveBeacon(level, deathPos, 32);
+                PsychicBeaconBlockEntity beacon = findNearbyActiveBeacon(level, deathPos, BEACON_DEATH_DETECTION_RADIUS);
                 if (beacon != null) {
                     beacon.incrementTodayKills();
                 }

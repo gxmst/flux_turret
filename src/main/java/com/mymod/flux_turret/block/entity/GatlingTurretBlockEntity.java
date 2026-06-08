@@ -16,7 +16,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     private static final int MAX_FIRE_INTERVAL = 30;
     private static final int MAX_SPIN = 200;
     private static final int MIN_SPIN_TO_FIRE = 30;
-    private static final int TARGET_CACHE_INTERVAL = 6;
+    private static final int TARGET_CACHE_INTERVAL = 10;
     private static final int SOUND_INTERVAL = 4;
 
     private int spinUp = 0;
@@ -80,8 +80,6 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
             return;
         }
 
-        be.refreshMonsterCacheIfNeeded(level, pos);
-
         int prevTargetId = be.targetId;
         int prevSpinUp = be.spinUp;
         boolean prevFiring = be.isFiring;
@@ -108,6 +106,12 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
         if (be.attackCooldown > 0)
             be.attackCooldown--;
 
+        if (hasEnoughEnergy) {
+            be.refreshMonsterCacheIfNeeded(level, pos);
+        } else {
+            be.monsterCache = java.util.List.of();
+        }
+
         Monster target = hasEnoughEnergy ? be.findClosestMonster(level, pos) : null;
 
         if (target == null) {
@@ -122,6 +126,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
                 be.isFiring = false;
             } else if (be.attackCooldown <= 0 && be.getEnergyStorage().consumeEnergy(fireCost)) {
                 int interval = getFireInterval(be.spinUp);
+                // Reset invulnerability to allow rapid successive hits from gatling
                 target.invulnerableTime = 0;
                 target.hurt(level.damageSources().magic(), TurretConfig.GATLING_DAMAGE.get().floatValue());
                 if (level.getGameTime() - be.lastSoundTime >= SOUND_INTERVAL) {

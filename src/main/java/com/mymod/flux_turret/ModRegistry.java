@@ -29,6 +29,7 @@ import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
 import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
 import com.mymod.flux_turret.block.entity.PsychicBeaconBlockEntity;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
+import com.mymod.flux_turret.item.EmptyCrystalItem;
 import com.mymod.flux_turret.item.EnergyCrystalItem;
 import com.mymod.flux_turret.menu.PsychicBeaconMenu;
 
@@ -84,7 +85,7 @@ public class ModRegistry {
 
         public static final RegistryObject<Block> PSYCHIC_BEACON_BLOCK = BLOCKS.register("psychic_beacon",
                         () -> new PsychicBeaconBlock(BlockBehaviour.Properties.of().strength(5.0f).sound(SoundType.METAL)
-                                        .noOcclusion().lightLevel(state -> state.getValue(PsychicBeaconBlock.LIT) ? 15 : 0)));
+                                        .noOcclusion().lightLevel(state -> state.getValue(PsychicBeaconBlock.LIT) ? 10 : 0)));
  
         public static final RegistryObject<Item> PRISM_TOWER_ITEM = ITEMS.register("prism_tower",
                         () -> new BlockItem(PRISM_TOWER_BLOCK.get(), new Item.Properties()));
@@ -102,7 +103,7 @@ public class ModRegistry {
                         () -> new EnergyCrystalItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
 
         public static final RegistryObject<Item> EMPTY_CRYSTAL_ITEM = ITEMS.register("empty_crystal",
-                        () -> new BlockItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
+                        () -> new EmptyCrystalItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
 
         public static final RegistryObject<Item> PSYCHIC_BEACON_ITEM = ITEMS.register("psychic_beacon",
                         () -> new BlockItem(PSYCHIC_BEACON_BLOCK.get(), new Item.Properties()));

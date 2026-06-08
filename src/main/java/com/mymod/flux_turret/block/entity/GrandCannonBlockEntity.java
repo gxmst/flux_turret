@@ -174,7 +174,9 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         long prevFireTime = be.lastFireTime;
         boolean prevHasEnergy = be.visualHasEnergy;
 
-        if (be.isRedstoneBlocked(level, pos)) {
+        Direction signalFacing = state.hasProperty(GrandCannonBlock.FACING)
+                ? state.getValue(GrandCannonBlock.FACING) : Direction.NORTH;
+        if (be.isStructureRedstoneBlocked(level, pos, signalFacing)) {
             be.targetId = -1;
             be.isFiring = false;
             be.warmupTicks = 0;
@@ -226,6 +228,15 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         }
     }
 
+    private boolean isStructureRedstoneBlocked(Level level, BlockPos corePos, Direction facing) {
+        for (GrandCannonBlock.CannonPart part : GrandCannonBlock.CannonPart.values()) {
+            if (level.hasNeighborSignal(part.offset(corePos, facing))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void fireCannon(Level level, BlockPos pos, Monster target) {
         Direction facing = getBlockState().getValue(GrandCannonBlock.FACING);
         Vec3 muzzlePos = new Vec3(
@@ -269,6 +280,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
         float damage = TurretConfig.GRAND_CANNON_DAMAGE.get().floatValue();
         for (Monster monster : monstersInArea) {
+            // Reset invulnerability to ensure damage is applied
             monster.invulnerableTime = 0;
             monster.hurt(level.damageSources().explosion(null, null), damage);
             Vec3 knockDir = monster.position().subtract(targetPos).normalize();

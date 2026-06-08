@@ -8,6 +8,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import java.util.EnumSet;
 
 public class MoveToBeaconGoal extends Goal {
+    private static final int PATH_RECALC_INTERVAL = 40;
+
     private final Mob mob;
     private final BlockPos targetPos;
     private final double speedModifier;
@@ -43,7 +45,7 @@ public class MoveToBeaconGoal extends Goal {
         recalcCooldown--;
         if (recalcCooldown <= 0) {
             mob.getNavigation().moveTo(targetPos.getX() + 0.5D, targetPos.getY() + 1.0D, targetPos.getZ() + 0.5D, speedModifier);
-            recalcCooldown = 20;
+            recalcCooldown = PATH_RECALC_INTERVAL;
         }
     }
 

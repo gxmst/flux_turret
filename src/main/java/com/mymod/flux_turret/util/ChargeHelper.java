@@ -40,8 +40,9 @@ public class ChargeHelper {
                     float pitch = heldItem.is(Items.REDSTONE_BLOCK) ? 1.8f : 1.5f;
                     level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 1.0f, pitch);
                     player.displayClientMessage(
-                            Component.literal(String.format("\u00a7b\u5145\u80fd: +%d FE (\u80fd\u91cf: %d / %d FE)",
-                                    received, storage.getEnergyStored(), capacity)),
+                            Component.translatable("message.flux_turret.charge_success",
+                                    received, storage.getEnergyStored(), capacity)
+                                .withStyle(net.minecraft.ChatFormatting.AQUA),
                             true);
                     return InteractionResult.SUCCESS;
                 }

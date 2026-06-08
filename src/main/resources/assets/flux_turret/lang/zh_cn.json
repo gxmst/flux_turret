@@ -25,5 +25,13 @@
     "tooltip.flux_turret.empty_crystal": "灰扑扑的空晶体……丢进熔炉里烧一烧，就能变成亮晶晶的能量晶体啦！",
     "tooltip.flux_turret.psychic_beacon": "用金属方块搭成金字塔底座，用红石充能！白天广播增益Buff，夜晚诱捕怪潮围攻！坚守到日出即可获得补给箱！",
     "flux_turret.config.title": "gxFlux 配置",
-    "container.flux_turret.psychic_beacon": "心灵雷达控制面板"
+    "container.flux_turret.psychic_beacon": "心灵雷达控制面板",
+    "message.flux_turret.psychic_wave": "强烈的心灵波在空气中激荡……你的大脑极度亢奋，无法入睡！",
+    "message.flux_turret.beacon_warning": "[警告] 检测到外部红石干扰！信标安全锁将在3秒内断开！",
+    "message.flux_turret.beacon_resumed": "红石信号已断开，信标恢复战斗运转！",
+    "message.flux_turret.beacon_defense_none": "[心灵雷达] 今日防区无足够安全威胁，无须降下补给箱。",
+    "message.flux_turret.beacon_energy_low": "[警告] 心灵能量不足 %d FE！宝箱合成失败！",
+    "message.flux_turret.beacon_no_chest_space": "[警告] 找不到合适的位置放置补给箱！",
+    "message.flux_turret.beacon_defense_success": "[心灵雷达] 今日防区战役防卫成功！补给箱已合成降下！",
+    "message.flux_turret.charge_success": "充能: +%d FE (能量: %d / %d FE)"
 }

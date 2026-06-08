@@ -15,6 +15,21 @@ import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.item.ItemStack;
 
 public class PsychicBeaconMenu extends AbstractContainerMenu {
+    private static final int DATA_SIZE = 13;
+    private static final int ENERGY_LOW = 0;
+    private static final int ENERGY_HIGH = 1;
+    private static final int MAX_ENERGY_LOW = 2;
+    private static final int MAX_ENERGY_HIGH = 3;
+    private static final int BEACON_STATE = 4;
+    private static final int STABILITY = 5;
+    private static final int THREAT_LEVEL = 6;
+    private static final int TODAY_KILLS = 7;
+    private static final int TIME_UNTIL_DAWN = 8;
+    private static final int NEARBY_PRISM = 9;
+    private static final int NEARBY_TESLA = 10;
+    private static final int NEARBY_GATLING = 11;
+    private static final int ENABLED = 12;
+
     private final PsychicBeaconBlockEntity beacon;
     private final BlockPos beaconPos;
     private final ContainerData data;
@@ -23,7 +38,7 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         super(ModRegistry.PSYCHIC_BEACON_MENU.get(), containerId);
         this.beacon = beacon;
         this.beaconPos = beacon.getBlockPos();
-        this.data = new SimpleContainerData(11);
+        this.data = new SimpleContainerData(DATA_SIZE);
         addDataSlots(data);
     }
 
@@ -31,52 +46,52 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         super(ModRegistry.PSYCHIC_BEACON_MENU.get(), containerId);
         this.beacon = null;
         this.beaconPos = buf.readBlockPos();
-        this.data = new SimpleContainerData(11);
+        this.data = new SimpleContainerData(DATA_SIZE);
         addDataSlots(data);
     }
 
     public int getEnergyStored() {
-        return data.get(0);
+        return getWideValue(ENERGY_LOW);
     }
 
     public int getMaxEnergy() {
-        return data.get(1);
+        return getWideValue(MAX_ENERGY_LOW);
     }
 
     public int getBeaconState() {
-        return data.get(2);
+        return data.get(BEACON_STATE);
     }
 
     public int getStability() {
-        return data.get(3);
+        return data.get(STABILITY);
     }
 
     public int getThreatLevel() {
-        return data.get(4);
+        return data.get(THREAT_LEVEL);
     }
 
     public int getTodayKills() {
-        return data.get(5);
+        return data.get(TODAY_KILLS);
     }
 
     public int getTimeUntilDawn() {
-        return data.get(6);
+        return data.get(TIME_UNTIL_DAWN);
     }
 
     public int getNearbyPrismCount() {
-        return data.get(7);
+        return data.get(NEARBY_PRISM);
     }
 
     public int getNearbyTeslaCount() {
-        return data.get(8);
+        return data.get(NEARBY_TESLA);
     }
 
     public int getNearbyGatlingCount() {
-        return data.get(9);
+        return data.get(NEARBY_GATLING);
     }
 
     public int getEnabled() {
-        return data.get(10);
+        return data.get(ENABLED);
     }
 
     public PsychicBeaconBlockEntity getBeacon() {
@@ -101,18 +116,27 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
     @Override
     public void broadcastChanges() {
         if (beacon == null) return;
-        data.set(0, beacon.getEnergyStorage().getEnergyStored());
-        data.set(1, beacon.getEnergyStorage().getMaxEnergyStored());
-        data.set(2, beacon.getBeaconState());
-        data.set(3, beacon.getStability());
-        data.set(4, beacon.getThreatLevel());
-        data.set(5, beacon.getTodayKills());
-        data.set(6, (int) beacon.getTimeUntilDawn());
+        setWideValue(ENERGY_LOW, beacon.getEnergyStorage().getEnergyStored());
+        setWideValue(MAX_ENERGY_LOW, beacon.getEnergyStorage().getMaxEnergyStored());
+        data.set(BEACON_STATE, beacon.getBeaconState());
+        data.set(STABILITY, beacon.getStability());
+        data.set(THREAT_LEVEL, beacon.getThreatLevel());
+        data.set(TODAY_KILLS, beacon.getTodayKills());
+        data.set(TIME_UNTIL_DAWN, (int) beacon.getTimeUntilDawn());
         int[] cached = beacon.getCachedTurretCounts();
-        data.set(7, cached[0]);
-        data.set(8, cached[1]);
-        data.set(9, cached[2]);
-        data.set(10, beacon.isEnabled() ? 1 : 0);
+        data.set(NEARBY_PRISM, cached[0]);
+        data.set(NEARBY_TESLA, cached[1]);
+        data.set(NEARBY_GATLING, cached[2]);
+        data.set(ENABLED, beacon.isEnabled() ? 1 : 0);
         super.broadcastChanges();
+    }
+
+    private int getWideValue(int lowIndex) {
+        return (data.get(lowIndex) & 0xFFFF) | ((data.get(lowIndex + 1) & 0xFFFF) << 16);
+    }
+
+    private void setWideValue(int lowIndex, int value) {
+        data.set(lowIndex, value & 0xFFFF);
+        data.set(lowIndex + 1, (value >>> 16) & 0xFFFF);
     }
 }

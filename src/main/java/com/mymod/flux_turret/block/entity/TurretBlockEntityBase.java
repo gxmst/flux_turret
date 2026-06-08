@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -27,10 +28,25 @@ import software.bernie.geckolib.core.animation.AnimatableManager;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBlockEntity {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
+
+    // Threat priority system: higher values = higher priority
+    protected static final Map<EntityType<?>, Integer> THREAT_PRIORITY = new HashMap<>();
+    static {
+        THREAT_PRIORITY.put(EntityType.CREEPER, 100);
+        THREAT_PRIORITY.put(EntityType.WITHER_SKELETON, 90);
+        THREAT_PRIORITY.put(EntityType.BLAZE, 80);
+        THREAT_PRIORITY.put(EntityType.WITCH, 70);
+        THREAT_PRIORITY.put(EntityType.SKELETON, 60);
+        THREAT_PRIORITY.put(EntityType.ZOMBIE, 40);
+        THREAT_PRIORITY.put(EntityType.SPIDER, 30);
+        THREAT_PRIORITY.put(EntityType.CAVE_SPIDER, 25);
+    }
 
     public int visualCountdown = 0;
     public int visualTargetId = -1;
@@ -168,6 +184,12 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         CompoundTag tag = pkt.getTag();
         if (tag == null) return;
 
+        // Thread-safe: ensure we're on the client side
+        if (level != null && !level.isClientSide) {
+            return; // Server should not receive this packet
+        }
+
+        // Safe to update on client
         load(tag);
         visualHasEnergy = energyStorage.getEnergyStored() >= getMinOperatingCost();
         visualTargetId = targetId;
@@ -211,15 +233,25 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     protected void refreshMonsterCache(Level level, BlockPos pos) {
         AABB scanArea = new AABB(pos).inflate(getTargetRange());
         monsterCache = level.getEntitiesOfClass(Monster.class, scanArea,
-                m -> m.isAlive() && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !m.hasCustomName()));
+                m -> m.isAlive() && !m.isRemoved() && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !m.hasCustomName()));
+
+        double x = pos.getX() + 0.5;
+        double y = pos.getY() + getEyeHeight();
+        double z = pos.getZ() + 0.5;
+
+        // Sort by threat priority first, then by distance
+        monsterCache.sort(Comparator
+                .comparingInt((Monster m) -> -THREAT_PRIORITY.getOrDefault(m.getType(), 10))
+                .thenComparingDouble(m -> m.distanceToSqr(x, y, z)));
     }
 
     protected Monster findClosestMonster(Level level, BlockPos pos) {
-        return monsterCache.stream()
-                .sorted(Comparator.comparingDouble(m -> m.distanceToSqr(pos.getX(), pos.getY(), pos.getZ())))
-                .filter(m -> isValidTarget(m, level, pos))
-                .findFirst()
-                .orElse(null);
+        for (Monster monster : monsterCache) {
+            if (monster == null || !monster.isAlive() || monster.isRemoved()) continue;
+            if (isValidTarget(monster, level, pos)) return monster;
+        }
+
+        return null;
     }
 
     protected boolean isRedstoneBlocked(Level level, BlockPos pos) {
@@ -237,7 +269,8 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
 
     protected void refreshMonsterCacheIfNeeded(Level level, BlockPos pos) {
         tickCounter++;
-        if (tickCounter % getTargetCacheInterval() == 0)
+        int interval = Math.max(1, getTargetCacheInterval());
+        if (tickCounter == 1 || tickCounter % interval == 0)
             refreshMonsterCache(level, pos);
     }
 

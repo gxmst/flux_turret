@@ -3,9 +3,9 @@ package com.mymod.flux_turret.block;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
+import com.mymod.flux_turret.item.EnergyCrystalItem;
 import com.mymod.flux_turret.util.ChargeHelper;
 import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -83,13 +83,7 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
                 drops.add(new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get()));
             } else {
                 // Charged crystal drops the charged crystal block item with energy NBT intact!
-                ItemStack stack = new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get());
-                CompoundTag blockEntityTag = new CompoundTag();
-                CompoundTag energyTag = new CompoundTag();
-                energyTag.putInt("energy", energy);
-                blockEntityTag.put("Energy", energyTag);
-                stack.addTagElement("BlockEntityTag", blockEntityTag);
-                drops.add(stack);
+                drops.add(EnergyCrystalItem.createChargedStack(energy));
             }
         } else {
             drops.add(new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get()));
@@ -119,13 +113,7 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
             if (remaining <= 0) {
                 return new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get());
             }
-            ItemStack stack = new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get());
-            CompoundTag blockEntityTag = new CompoundTag();
-            CompoundTag energyTag = new CompoundTag();
-            energyTag.putInt("energy", remaining);
-            blockEntityTag.put("Energy", energyTag);
-            stack.addTagElement("BlockEntityTag", blockEntityTag);
-            return stack;
+            return EnergyCrystalItem.createChargedStack(remaining);
         }
         return new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get());
     }

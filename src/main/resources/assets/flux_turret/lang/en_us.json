@@ -25,5 +25,13 @@
     "tooltip.flux_turret.empty_crystal": "A dull, lifeless crystal... Toss it in a furnace to turn it into a fully charged Energy Crystal!",
     "tooltip.flux_turret.psychic_beacon": "Build a metal pyramid base, charge it with redstone! Daytime: broadcasts buffs. Nighttime: lures monster waves! Survive until dawn to earn supply crates!",
     "flux_turret.config.title": "gxFlux Configuration",
-    "container.flux_turret.psychic_beacon": "Psychic Radar Control Panel"
+    "container.flux_turret.psychic_beacon": "Psychic Radar Control Panel",
+    "message.flux_turret.psychic_wave": "Intense psychic waves surge through the air... Your mind is too stimulated to sleep!",
+    "message.flux_turret.beacon_warning": "[WARNING] External redstone interference detected! Beacon safety lock will disengage in 3 seconds!",
+    "message.flux_turret.beacon_resumed": "Redstone signal cleared, beacon combat operations resumed!",
+    "message.flux_turret.beacon_defense_none": "[Psychic Radar] Today's defense zone had insufficient threats, no supply crate needed.",
+    "message.flux_turret.beacon_energy_low": "[WARNING] Insufficient psychic energy %d FE! Chest synthesis failed!",
+    "message.flux_turret.beacon_no_chest_space": "[WARNING] Cannot find suitable location to place supply crate!",
+    "message.flux_turret.beacon_defense_success": "[Psychic Radar] Today's defense mission successful! Supply crate has been synthesized and deployed!",
+    "message.flux_turret.charge_success": "Charged: +%d FE (Energy: %d / %d FE)"
 }

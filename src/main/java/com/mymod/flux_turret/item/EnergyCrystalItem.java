@@ -1,10 +1,13 @@
 package com.mymod.flux_turret.item;
 
+import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.IntTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -38,7 +41,13 @@ public class EnergyCrystalItem extends BlockItem {
     public static int getEnergyStored(ItemStack stack) {
         CompoundTag blockEntityTag = stack.getTagElement("BlockEntityTag");
         if (blockEntityTag != null && blockEntityTag.contains("Energy")) {
-            return blockEntityTag.getCompound("Energy").getInt("energy");
+            Tag energyTag = blockEntityTag.get("Energy");
+            if (energyTag instanceof IntTag intTag) {
+                return clampEnergy(intTag.getAsInt());
+            }
+            if (energyTag instanceof CompoundTag compoundTag) {
+                return clampEnergy(compoundTag.getInt("energy"));
+            }
         }
         // No NBT = freshly smelted = full charge
         return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
@@ -54,16 +63,30 @@ public class EnergyCrystalItem extends BlockItem {
         return getEnergyStored(stack) > 0;
     }
 
+    public static ItemStack createChargedStack(int energy) {
+        ItemStack stack = new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get());
+        setEnergyStored(stack, energy);
+        return stack;
+    }
+
+    public static void setEnergyStored(ItemStack stack, int energy) {
+        CompoundTag blockEntityTag = stack.getOrCreateTagElement("BlockEntityTag");
+        blockEntityTag.put("Energy", IntTag.valueOf(clampEnergy(energy)));
+    }
+
+    private static int clampEnergy(int energy) {
+        return Math.max(0, Math.min(energy, TurretConfig.ENERGY_CRYSTAL_CAPACITY.get()));
+    }
+
     @Override
     protected boolean updateCustomBlockEntityTag(BlockPos pos, Level level, @Nullable net.minecraft.world.entity.player.Player player, ItemStack stack, BlockState state) {
-        boolean result = super.updateCustomBlockEntityTag(pos, level, player, stack, state);
         if (level.getBlockEntity(pos) instanceof EnergyCrystalBlockEntity be) {
             int energy = getEnergyStored(stack);
-            // Set the block entity energy to match the item
-            be.getEnergyStorage().extractEnergy(be.getEnergyStorage().getEnergyStored(), false);
-            be.getEnergyStorage().receiveEnergy(energy, false);
+            be.setEnergyStored(energy);
             be.setChanged();
+            level.sendBlockUpdated(pos, state, state, 3);
+            return true;
         }
-        return result;
+        return super.updateCustomBlockEntityTag(pos, level, player, stack, state);
     }
 }

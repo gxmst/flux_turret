@@ -10,12 +10,24 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 
 public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMenu> {
+    private static final int PANEL = 0xF00D1118;
+    private static final int PANEL_SOFT = 0xE0141822;
+    private static final int HEADER = 0xFF211529;
+    private static final int BORDER = 0xFF8D5AC7;
+    private static final int BORDER_SOFT = 0x506E50A3;
+    private static final int TEXT = 0xFFE7E1EC;
+    private static final int TEXT_DIM = 0xFFAFA7B8;
+    private static final int CYAN = 0xFF31D7FF;
+    private static final int GREEN = 0xFF72E68A;
+    private static final int AMBER = 0xFFFFC45A;
+    private static final int RED = 0xFFFF5B6B;
+
     private Button toggleButton;
 
     public PsychicBeaconScreen(PsychicBeaconMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 195;
-        this.imageHeight = 192;
+        this.imageWidth = 238;
+        this.imageHeight = 234;
         this.inventoryLabelY = Integer.MAX_VALUE;
     }
 
@@ -26,10 +38,8 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         int y = (this.height - this.imageHeight) / 2;
         toggleButton = addRenderableWidget(Button.builder(
                 Component.literal(""),
-                b -> {
-                    menu.toggleEnabled();
-                })
-                .bounds(x + this.imageWidth - 70, y + 5, 60, 14)
+                b -> menu.toggleEnabled())
+                .bounds(x + this.imageWidth - 66, y + 8, 56, 18)
                 .build());
     }
 
@@ -38,176 +48,209 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
 
-        guiGraphics.fill(x, y, x + this.imageWidth, y + this.imageHeight, 0xD0181818);
-        drawBorder(guiGraphics, x, y, 0xFF9944BB, 1);
-        drawBorder(guiGraphics, x + 1, y + 1, 0x409944BB, 1);
+        guiGraphics.fill(x + 3, y + 4, x + this.imageWidth + 3, y + this.imageHeight + 4, 0x70000000);
+        guiGraphics.fill(x, y, x + this.imageWidth, y + this.imageHeight, PANEL);
+        guiGraphics.fill(x + 1, y + 1, x + this.imageWidth - 1, y + 30, HEADER);
+        guiGraphics.fill(x + 1, y + 30, x + this.imageWidth - 1, y + 31, BORDER_SOFT);
+        drawBorder(guiGraphics, x, y, this.imageWidth, this.imageHeight, BORDER);
+        drawBorder(guiGraphics, x + 1, y + 1, this.imageWidth - 2, this.imageHeight - 2, BORDER_SOFT);
 
-        renderEnergyBar(guiGraphics, x, y, partialTick);
-    }
-
-    private void drawBorder(GuiGraphics g, int x, int y, int color, int thickness) {
-        g.fill(x, y, x + this.imageWidth, y + thickness, color);
-        g.fill(x, y + this.imageHeight - thickness, x + this.imageWidth, y + this.imageHeight, color);
-        g.fill(x, y, x + thickness, y + this.imageHeight, color);
-        g.fill(x + this.imageWidth - thickness, y, x + this.imageWidth, y + this.imageHeight, color);
-    }
-
-    private void renderEnergyBar(GuiGraphics guiGraphics, int x, int y, float partialTick) {
-        int energy = menu.getEnergyStored();
-        int maxEnergy = menu.getMaxEnergy();
-        float ratio = maxEnergy > 0 ? (float) energy / maxEnergy : 0;
-
-        int barX = x + 10;
-        int barY = y + 24;
-        int barWidth = this.imageWidth - 20;
-        int barHeight = 10;
-
-        guiGraphics.fill(barX, barY, barX + barWidth, barY + barHeight, 0xFF303030);
-
-        int filledWidth = (int) (barWidth * ratio);
-        if (filledWidth > 0) {
-            int baseColor;
-            if (ratio > 0.5f) {
-                baseColor = 0xFF00CCFF;
-            } else if (ratio > 0.2f) {
-                baseColor = 0xFFFFAA00;
-            } else {
-                baseColor = 0xFFFF3333;
-            }
-            float gameTime = this.minecraft.level.getGameTime() + partialTick;
-            float pulse = 0.85f + 0.15f * Mth.sin(gameTime * 0.05f);
-            int r = (int) (((baseColor >> 16) & 0xFF) * pulse);
-            int g = (int) (((baseColor >> 8) & 0xFF) * pulse);
-            int b = (int) ((baseColor & 0xFF) * pulse);
-            int pulsedColor = (0xFF << 24) | (r << 16) | (g << 8) | b;
-            guiGraphics.fill(barX, barY, barX + filledWidth, barY + barHeight, pulsedColor);
-
-            int highlightEnd = Math.min(filledWidth, 3);
-            guiGraphics.fill(barX, barY, barX + highlightEnd, barY + barHeight / 2, 0x40FFFFFF);
-        }
-
-        guiGraphics.fill(barX - 1, barY - 1, barX + barWidth + 1, barY, 0xFF505050);
-        guiGraphics.fill(barX - 1, barY + barHeight, barX + barWidth + 1, barY + barHeight + 1, 0xFF505050);
-        guiGraphics.fill(barX - 1, barY, barX, barY + barHeight, 0xFF505050);
-        guiGraphics.fill(barX + barWidth, barY, barX + barWidth + 1, barY + barHeight, 0xFF505050);
+        renderEnergyBar(guiGraphics, x + 12, y + 46, this.imageWidth - 24, 12);
     }
 
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+        if (toggleButton != null) {
+            boolean enabled = menu.getEnabled() == 1;
+            toggleButton.setMessage(Component.literal(enabled ? "启用" : "关闭"));
+        }
+
         this.renderBackground(guiGraphics);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
 
         int x = (this.width - this.imageWidth) / 2;
         int y = (this.height - this.imageHeight) / 2;
-        int textX = x + 12;
-        int textY = y + 6;
-
         int state = menu.getBeaconState();
-        int indicatorColor = getStateIndicatorColor(state, partialTick);
-        guiGraphics.fill(x + 8, y + 8, x + 16, y + 16, 0xFF404040);
-        guiGraphics.fill(x + 9, y + 9, x + 15, y + 15, indicatorColor);
+        int stateColor = getStateColor(state, partialTick);
 
-        guiGraphics.drawString(this.font,
-                Component.translatable("container.flux_turret.psychic_beacon"),
-                x + 20, textY, 0xFFCC88EE);
-        textY += 16;
-
-        boolean enabled = menu.getEnabled() == 1;
-        if (toggleButton != null) {
-            toggleButton.setMessage(Component.literal(enabled ? "\u00A7a\u25CF ON" : "\u00A7c\u25CF OFF"));
-        }
+        guiGraphics.fill(x + 10, y + 10, x + 18, y + 18, 0xFF2C3038);
+        guiGraphics.fill(x + 11, y + 11, x + 17, y + 17, stateColor);
+        drawText(guiGraphics, Component.translatable("container.flux_turret.psychic_beacon").getString(),
+                x + 24, y + 9, 140, 0xFFECD7FF);
 
         int energy = menu.getEnergyStored();
         int maxEnergy = menu.getMaxEnergy();
         int drainRate = TurretConfig.PSYCHIC_BEACON_DRAIN_RATE.get();
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("\u26A1 %d / %d FE  (%d FE/t)", energy, maxEnergy, drainRate)),
-                textX, textY, 0xFF00CCFF);
-        textY += 18;
+        drawText(guiGraphics, "心灵能量", x + 13, y + 34, 80, TEXT_DIM);
+        drawText(guiGraphics,
+                formatFe(energy) + " / " + formatFe(maxEnergy) + " FE  维护 " + formatFe(drainRate) + "/t",
+                x + 13, y + 61, this.imageWidth - 26, getEnergyColor(energy, maxEnergy));
 
-        String stateStr = switch (state) {
-            case 0 -> "\u00A78\u79BB\u7EBF";
-            case 1 -> "\u00A7a\u5F85\u673A\u4E2D";
-            case 2 -> "\u00A7c\u6218\u6597\u9632\u536B\u4E2D";
-            case 3 -> "\u00A74\u5D29\u6E83";
-            case 4 -> "\u00A7e\u8D85\u8F7D\u8B66\u544A";
-            default -> "\u00A77\u672A\u77E5";
-        };
-        guiGraphics.drawString(this.font,
-                Component.literal("\u72B6\u6001: " + stateStr),
-                textX, textY, 0xFFE0E0E0);
-        textY += 14;
-
-        int threatLevel = menu.getThreatLevel();
-        int radius = (threatLevel + 1) * 10;
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("\u5E95\u5EA7\u5C42\u7EA7: Lv.%d  (\u5E7F\u64AD\u534A\u5F84: %d\u683C)", threatLevel, radius)),
-                textX, textY, 0xFFE0E0E0);
-        textY += 16;
-
-        guiGraphics.drawString(this.font,
-                Component.literal("\u00A7b[\u96F7\u8FBE\u9632\u5FA1\u7F51\u626B\u63CF]"),
-                textX, textY, 0xFF9944BB);
-        textY += 12;
-
-        int prismCount = menu.getNearbyPrismCount();
-        int teslaCount = menu.getNearbyTeslaCount();
-        int gatlingCount = menu.getNearbyGatlingCount();
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("  \u25B6 \u5149\u51CC\u5854: %d | \u7279\u65AF\u62C9: %d | \u52A0\u7279\u6797: %d", prismCount, teslaCount, gatlingCount)),
-                textX, textY, 0xFFC0C0C0);
-        textY += 16;
-
-        int kills = menu.getTodayKills();
-        int minKills = TurretConfig.PSYCHIC_BEACON_MIN_KILLS.get();
-        int killColor = kills >= minKills ? 0xFF55FF55 : 0xFFFF5555;
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("\u2605 \u4ECA\u65E5\u51C0\u5316: %d \u53EA  (\u95E8\u69DB: %d\u53EA)", kills, minKills)),
-                textX, textY, killColor);
-        textY += 14;
+        int cardW = 103;
+        int left = x + 12;
+        int right = left + cardW + 8;
+        int row1 = y + 80;
+        int row2 = row1 + 44;
+        int row3 = row2 + 44;
 
         int stability = menu.getStability();
-        int stabColor = stability > 50 ? 0xFF55FF55 : stability > 20 ? 0xFFFFAA00 : 0xFFFF3333;
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("\u7A33\u5B9A\u5EA6: %d / 100", stability)),
-                textX, textY, stabColor);
-        textY += 16;
-
-        int ticksUntilDawn = menu.getTimeUntilDawn();
-        int minutes = ticksUntilDawn / 1200;
-        int seconds = (ticksUntilDawn % 1200) / 20;
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("\u23F1 \u8DDD\u6E05\u6668\u5408\u6210: %02d:%02d", minutes, seconds)),
-                textX, textY, 0xFFE0E0E0);
-        textY += 14;
-
+        int stabilityMax = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
+        int threatLevel = menu.getThreatLevel();
+        int kills = menu.getTodayKills();
+        int minKills = TurretConfig.PSYCHIC_BEACON_MIN_KILLS.get();
         int dawnCost = TurretConfig.PSYCHIC_BEACON_DAWN_COST.get();
-        boolean canAfford = energy >= dawnCost;
-        guiGraphics.drawString(this.font,
-                Component.literal(String.format("  \u5408\u6210\u80FD\u8017: %d FE %s", dawnCost, canAfford ? "\u00A7a[\u5145\u8DB3]" : "\u00A7c[\u4E0D\u8DB3]")),
-                textX, textY, 0xFFC0C0C0);
+
+        drawMetric(guiGraphics, left, row1, cardW, 36,
+                "状态", getStateText(state), stateColor, stateColor);
+        drawMetric(guiGraphics, right, row1, cardW, 36,
+                "稳定度", stability + " / " + stabilityMax, getStabilityColor(stability, stabilityMax), getStabilityColor(stability, stabilityMax));
+
+        drawMetric(guiGraphics, left, row2, cardW, 36,
+                "威胁等级", "Lv." + threatLevel + "  半径 " + ((threatLevel + 1) * 10), getThreatColor(threatLevel), getThreatColor(threatLevel));
+        drawMetric(guiGraphics, right, row2, cardW, 36,
+                "今日净化", kills + " / " + minKills, kills >= minKills ? GREEN : RED, kills >= minKills ? GREEN : RED);
+
+        drawMetric(guiGraphics, left, row3, cardW, 36,
+                "清晨合成", formatTicks(menu.getTimeUntilDawn()), CYAN, TEXT);
+        drawMetric(guiGraphics, right, row3, cardW, 36,
+                "合成能耗", formatFe(dawnCost) + " FE", energy >= dawnCost ? GREEN : AMBER, energy >= dawnCost ? GREEN : AMBER);
+
+        drawNetworkPanel(guiGraphics, x + 12, y + 204, this.imageWidth - 24, 18);
     }
 
-    private int getStateIndicatorColor(int state, float partialTick) {
-        float gameTime = this.minecraft.level.getGameTime() + partialTick;
-        float pulse = 0.7f + 0.3f * Mth.sin(gameTime * 0.1f);
+    private void renderEnergyBar(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+        int energy = menu.getEnergyStored();
+        int maxEnergy = menu.getMaxEnergy();
+        float ratio = maxEnergy > 0 ? Mth.clamp((float) energy / maxEnergy, 0.0f, 1.0f) : 0.0f;
+        int filled = Math.min(width - 2, Math.round((width - 2) * ratio));
+        int fillColor = getEnergyColor(energy, maxEnergy);
+
+        guiGraphics.fill(x, y, x + width, y + height, 0xFF252A33);
+        guiGraphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0xFF10141C);
+        guiGraphics.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
+        try {
+            if (filled > 0) {
+                guiGraphics.fill(x + 1, y + 1, x + 1 + filled, y + height - 1, fillColor);
+                guiGraphics.fill(x + 1, y + 1, x + 1 + filled, y + 4, 0x55FFFFFF);
+            }
+        } finally {
+            guiGraphics.disableScissor();
+        }
+        drawBorder(guiGraphics, x, y, width, height, 0xFF3B4454);
+    }
+
+    private void drawMetric(GuiGraphics guiGraphics, int x, int y, int width, int height,
+            String label, String value, int accent, int valueColor) {
+        guiGraphics.fill(x, y, x + width, y + height, PANEL_SOFT);
+        guiGraphics.fill(x, y, x + 3, y + height, accent);
+        drawBorder(guiGraphics, x, y, width, height, 0x403B4454);
+        drawText(guiGraphics, label, x + 9, y + 6, width - 14, TEXT_DIM);
+        drawText(guiGraphics, value, x + 9, y + 20, width - 14, valueColor);
+    }
+
+    private void drawNetworkPanel(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+        guiGraphics.fill(x, y, x + width, y + height, PANEL_SOFT);
+        guiGraphics.fill(x, y, x + 3, y + height, BORDER);
+        drawBorder(guiGraphics, x, y, width, height, 0x403B4454);
+        String text = String.format("防御网  光凌:%d  电圈:%d  机枪:%d",
+                menu.getNearbyPrismCount(), menu.getNearbyTeslaCount(), menu.getNearbyGatlingCount());
+        drawText(guiGraphics, text, x + 9, y + 6, width - 14, TEXT);
+    }
+
+    private void drawText(GuiGraphics guiGraphics, String text, int x, int y, int maxWidth, int color) {
+        guiGraphics.drawString(this.font, Component.literal(fitText(text, maxWidth)), x, y, color);
+    }
+
+    private String fitText(String text, int maxWidth) {
+        if (this.font.width(text) <= maxWidth) {
+            return text;
+        }
+
+        String suffix = "...";
+        int end = text.length();
+        while (end > 0 && this.font.width(text.substring(0, end) + suffix) > maxWidth) {
+            end--;
+        }
+        return text.substring(0, Math.max(0, end)) + suffix;
+    }
+
+    private void drawBorder(GuiGraphics guiGraphics, int x, int y, int width, int height, int color) {
+        guiGraphics.fill(x, y, x + width, y + 1, color);
+        guiGraphics.fill(x, y + height - 1, x + width, y + height, color);
+        guiGraphics.fill(x, y, x + 1, y + height, color);
+        guiGraphics.fill(x + width - 1, y, x + width, y + height, color);
+    }
+
+    private String formatFe(int value) {
+        if (value >= 1_000_000) {
+            return String.format("%.1fM", value / 1_000_000.0);
+        }
+        if (value >= 10_000) {
+            return Math.round(value / 1_000.0f) + "k";
+        }
+        return String.format("%,d", value);
+    }
+
+    private String formatTicks(int ticks) {
+        int minutes = ticks / 1200;
+        int seconds = (ticks % 1200) / 20;
+        return String.format("%02d:%02d", minutes, seconds);
+    }
+
+    private String getStateText(int state) {
         return switch (state) {
-            case 0 -> 0xFF444444;
-            case 1 -> 0xFF44FF44;
-            case 2 -> {
-                float p = pulse;
-                int r2 = (int) (0x44 * p);
-                int g2 = (int) (0x44 * p);
-                int b2 = (int) (0xFF * p);
-                yield (0xFF << 24) | (r2 << 16) | (g2 << 8) | b2;
-            }
-            case 3 -> 0xFFFF2222;
-            case 4 -> {
-                float p = 0.5f + 0.5f * Mth.sin(gameTime * 0.25f);
-                yield 0xFF000000 | ((int) (0xFF * p) << 16) | ((int) (0x88 * p) << 8);
-            }
-            default -> 0xFF888888;
+            case 0 -> "离线";
+            case 1 -> "待机";
+            case 2 -> "防卫中";
+            case 3 -> "崩溃";
+            case 4 -> "警告";
+            default -> "未知";
         };
+    }
+
+    private int getStateColor(int state, float partialTick) {
+        long gameTime = this.minecraft != null && this.minecraft.level != null ? this.minecraft.level.getGameTime() : 0L;
+        float pulse = 0.65f + 0.35f * Mth.sin((gameTime + partialTick) * 0.16f);
+        return switch (state) {
+            case 0 -> 0xFF59606B;
+            case 1 -> GREEN;
+            case 2 -> pulseColor(0xFF5D73FF, pulse);
+            case 3 -> RED;
+            case 4 -> pulseColor(AMBER, pulse);
+            default -> TEXT_DIM;
+        };
+    }
+
+    private int getEnergyColor(int energy, int maxEnergy) {
+        if (maxEnergy <= 0) return TEXT_DIM;
+        float ratio = (float) energy / maxEnergy;
+        if (ratio > 0.5f) return CYAN;
+        if (ratio > 0.2f) return AMBER;
+        return RED;
+    }
+
+    private int getStabilityColor(int stability, int maxStability) {
+        if (maxStability <= 0) return TEXT_DIM;
+        float ratio = (float) stability / maxStability;
+        if (ratio > 0.5f) return GREEN;
+        if (ratio > 0.2f) return AMBER;
+        return RED;
+    }
+
+    private int getThreatColor(int threatLevel) {
+        return switch (threatLevel) {
+            case 0 -> TEXT_DIM;
+            case 1, 2 -> CYAN;
+            case 3 -> AMBER;
+            default -> RED;
+        };
+    }
+
+    private int pulseColor(int color, float pulse) {
+        int r = (int) (((color >> 16) & 0xFF) * pulse);
+        int g = (int) (((color >> 8) & 0xFF) * pulse);
+        int b = (int) ((color & 0xFF) * pulse);
+        return (0xFF << 24) | (r << 16) | (g << 8) | b;
     }
 
     @Override
