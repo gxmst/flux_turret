@@ -25,49 +25,33 @@ def create_prism_model():
                 "bones": [
                     {"name": "root", "pivot": [0, 0, 0]},
                     {"name": "base", "parent": "root", "pivot": [0, 0, 0], "cubes": [
-                        {"origin": [-8, 0, -8], "size": [16, 4, 16], "uv": [0, 0]},
-                        {"origin": [-7, 4, -7], "size": [14, 2, 14], "uv": [0, 32]},
-                        {"origin": [-5, 6, -5], "size": [10, 2, 10], "uv": [0, 48]},
-                        {"origin": [-3, 8, -3], "size": [6, 2, 6], "uv": [0, 60]}
+                        {"origin": [-6, 0, -6], "size": [12, 4, 12], "uv": [0, 0]},
+                        {"origin": [-4, 0, -7], "size": [8, 4, 1], "uv": [0, 16]},
+                        {"origin": [-4, 0, 6], "size": [8, 4, 1], "uv": [0, 16]},
+                        {"origin": [-7, 0, -4], "size": [1, 4, 8], "uv": [18, 16]},
+                        {"origin": [6, 0, -4], "size": [1, 4, 8], "uv": [18, 16]}
                     ]},
-                    {"name": "spire", "parent": "root", "pivot": [0, 10, 0], "cubes": [
-                        {"origin": [-1.5, 10, -1.5], "size": [3, 26, 3], "uv": [116, 0]},
-                        {"origin": [-5, 10, -5], "size": [2, 28, 2], "uv": [108, 0]},
-                        {"origin": [3, 10, -5], "size": [2, 28, 2], "uv": [108, 0]},
-                        {"origin": [-5, 10, 3], "size": [2, 28, 2], "uv": [108, 0]},
-                        {"origin": [3, 10, 3], "size": [2, 28, 2], "uv": [108, 0]},
-                        {"origin": [-5.5, 18, -5.5], "size": [11, 2, 11], "uv": [64, 0]},
-                        {"origin": [-5.5, 28, -5.5], "size": [11, 2, 11], "uv": [64, 14]}
+                    {"name": "spire", "parent": "root", "pivot": [0, 4, 0], "cubes": []},
+                    {"name": "turret", "parent": "root", "pivot": [0, 40, 0], "cubes": [
+                        {"origin": [-2, 38, -2], "size": [4, 4, 4], "uv": [64, 28]},
+                        {"origin": [-1, 42, -1], "size": [2, 2, 2], "uv": [80, 28]}
                     ]},
-                    {"name": "turret", "parent": "root", "pivot": [0, 42, 0], "cubes": [
-                        {"origin": [-4, 38, -4], "size": [8, 2, 8], "uv": [64, 28]}
-                    ]},
-                    {"name": "crystal", "parent": "turret", "pivot": [0, 45, 0], "cubes": [
-                        {"origin": [-3, 42, -3], "size": [6, 6, 6], "uv": [88, 50]}
-                    ]},
-                    {"name": "reflector_1", "parent": "turret", "pivot": [0, 45, -5], "cubes": [{"origin": [-2, 42, -6], "size": [4, 6, 1], "uv": [40, 0]}]},
-                    {"name": "reflector_2", "parent": "turret", "pivot": [0, 45, 5], "cubes": [{"origin": [-2, 42, 5], "size": [4, 6, 1], "uv": [40, 0]}]},
-                    {"name": "reflector_3", "parent": "turret", "pivot": [-5, 45, 0], "cubes": [{"origin": [-6, 42, -2], "size": [1, 6, 4], "uv": [50, 0]}]},
-                    {"name": "reflector_4", "parent": "turret", "pivot": [5, 45, 0], "cubes": [{"origin": [5, 42, -2], "size": [1, 6, 4], "uv": [50, 0]}]}
+                    {"name": "crystal", "parent": "turret", "pivot": [0, 40, 0], "cubes": []},
+                    {"name": "reflector_1", "parent": "turret", "pivot": [0, 38, -4], "cubes": [{"origin": [-1, 36, -5], "size": [2, 1, 2], "uv": [40, 0]}]},
+                    {"name": "reflector_2", "parent": "turret", "pivot": [3.46, 38, 2], "cubes": [{"origin": [-1, 36, -1], "size": [2, 1, 2], "pivot": [3.46, 38, 2], "rotation": [0, 120, 0], "uv": [40, 0]}]},
+                    {"name": "reflector_3", "parent": "turret", "pivot": [-3.46, 38, 2], "cubes": [{"origin": [-1, 36, -1], "size": [2, 1, 2], "pivot": [-3.46, 38, 2], "rotation": [0, -120, 0], "uv": [40, 0]}]}
                 ]
             }
         ]
     }
     
-    for face in [
-        ([-4, 10, -4.5], [0, 14, -4.5], [0, 0, 45]), ([-4, 10, -4.5], [0, 14, -4.5], [0, 0, -45]),
-        ([-4, 20, -4.5], [0, 24, -4.5], [0, 0, 45]), ([-4, 20, -4.5], [0, 24, -4.5], [0, 0, -45]),
-        ([-4, 10, 3.5], [0, 14, 3.5], [0, 0, 45]), ([-4, 10, 3.5], [0, 14, 3.5], [0, 0, -45]),
-        ([-4, 20, 3.5], [0, 24, 3.5], [0, 0, 45]), ([-4, 20, 3.5], [0, 24, 3.5], [0, 0, -45])
-    ]:
-        model["minecraft:geometry"][0]["bones"][2]["cubes"].append({"origin": face[0], "size": [8, 1, 1], "pivot": face[1], "rotation": face[2], "uv": [112, 40]})
-    for face in [
-        ([-4.5, 10, -4], [-4.5, 14, 0], [45, 0, 0]), ([-4.5, 10, -4], [-4.5, 14, 0], [-45, 0, 0]),
-        ([-4.5, 20, -4], [-4.5, 24, 0], [45, 0, 0]), ([-4.5, 20, -4], [-4.5, 24, 0], [-45, 0, 0]),
-        ([3.5, 10, -4], [3.5, 14, 0], [45, 0, 0]), ([3.5, 10, -4], [3.5, 14, 0], [-45, 0, 0]),
-        ([3.5, 20, -4], [3.5, 24, 0], [45, 0, 0]), ([3.5, 20, -4], [3.5, 24, 0], [-45, 0, 0])
-    ]:
-        model["minecraft:geometry"][0]["bones"][2]["cubes"].append({"origin": face[0], "size": [1, 1, 8], "pivot": face[1], "rotation": face[2], "uv": [112, 40]})
+    for i in range(3):
+        angle = i * 120
+        model["minecraft:geometry"][0]["bones"][2]["cubes"].extend([
+            {"origin": [-1, 4, -5], "size": [2, 8, 2], "pivot": [0, 4, 0], "rotation": [0, angle, 0], "uv": [116, 0]},
+            {"origin": [-1.5, 12, -5.5], "size": [3, 4, 3], "pivot": [0, 12, 0], "rotation": [0, angle, 0], "uv": [88, 50]},
+            {"origin": [-0.5, 16, -4.5], "size": [1, 22, 1], "pivot": [0, 16, 0], "rotation": [0, angle, 0], "uv": [108, 0]}
+        ])
     
     with open('src/main/resources/assets/flux_turret/geo/block/prism_tower.geo.json', 'w') as f:
         json.dump(model, f, indent=4)
@@ -89,20 +73,35 @@ def create_tesla_model():
                     {"name": "root", "pivot": [0, 0, 0]},
                     {"name": "base", "parent": "root", "pivot": [0, 0, 0], "cubes": [
                         {"origin": [-8, 0, -8], "size": [16, 4, 16], "uv": [0, 0]},
+                        {"origin": [-10, 0, -10], "size": [4, 4, 4], "pivot": [-8, 0, -8], "rotation": [0, 45, 0], "uv": [0, 20]},
+                        {"origin": [6, 0, -10], "size": [4, 4, 4], "pivot": [8, 0, -8], "rotation": [0, -45, 0], "uv": [0, 20]},
+                        {"origin": [-10, 0, 6], "size": [4, 4, 4], "pivot": [-8, 0, 8], "rotation": [0, -45, 0], "uv": [0, 20]},
+                        {"origin": [6, 0, 6], "size": [4, 4, 4], "pivot": [8, 0, 8], "rotation": [0, 45, 0], "uv": [0, 20]},
                         {"origin": [-6, 4, -6], "size": [12, 4, 12], "uv": [0, 32]},
                         {"origin": [-4, 8, -4], "size": [8, 4, 8], "uv": [0, 50]}
                     ]},
                     {"name": "pillar", "parent": "root", "pivot": [0, 12, 0], "cubes": [
-                        {"origin": [-2, 12, -2], "size": [4, 28, 4], "uv": [64, 0]}
+                        {"origin": [-1.5, 12, -1.5], "size": [3, 28, 3], "uv": [64, 0]},
+                        {"origin": [-2.5, 12, -0.5], "size": [1, 28, 1], "uv": [76, 0]},
+                        {"origin": [1.5, 12, -0.5], "size": [1, 28, 1], "uv": [76, 0]},
+                        {"origin": [-0.5, 12, -2.5], "size": [1, 28, 1], "uv": [80, 0]},
+                        {"origin": [-0.5, 12, 1.5], "size": [1, 28, 1], "uv": [80, 0]}
                     ]},
                     {"name": "rings", "parent": "root", "pivot": [0, 12, 0]},
+                    {"name": "rods", "parent": "root", "pivot": [0, 14, 0], "cubes": [
+                        {"origin": [1.5, 14, -0.25], "size": [4.5, 0.5, 0.5], "pivot": [1.5, 14, 0], "rotation": [0, 0, -45], "uv": [64, 32]},
+                        {"origin": [-6, 14, -0.25], "size": [4.5, 0.5, 0.5], "pivot": [-1.5, 14, 0], "rotation": [0, 0, 45], "uv": [64, 32]},
+                        {"origin": [-0.25, 14, 1.5], "size": [0.5, 0.5, 4.5], "pivot": [0, 14, 1.5], "rotation": [45, 0, 0], "uv": [64, 32]},
+                        {"origin": [-0.25, 14, -6], "size": [0.5, 0.5, 4.5], "pivot": [0, 14, -1.5], "rotation": [-45, 0, 0], "uv": [64, 32]}
+                    ]},
                     {"name": "node", "parent": "root", "pivot": [0, 42, 0], "cubes": [
                         {"origin": [-3, 40, -3], "size": [6, 6, 6], "uv": [88, 0]},
-                        {"origin": [-1, 46, -1], "size": [2, 4, 2], "uv": [88, 14]},
-                        {"origin": [-4, 41, -1], "size": [1, 4, 2], "uv": [100, 14]},
-                        {"origin": [3, 41, -1], "size": [1, 4, 2], "uv": [100, 14]},
-                        {"origin": [-1, 41, -4], "size": [2, 4, 1], "uv": [108, 14]},
-                        {"origin": [-1, 41, 3], "size": [2, 4, 1], "uv": [108, 14]}
+                        {"origin": [-0.5, 46, -0.5], "size": [1, 4, 1], "uv": [88, 14]},
+                        {"origin": [-0.5, 36, -0.5], "size": [1, 4, 1], "uv": [88, 14]},
+                        {"origin": [-5, 42.5, -0.5], "size": [2, 1, 1], "uv": [100, 14]},
+                        {"origin": [3, 42.5, -0.5], "size": [2, 1, 1], "uv": [100, 14]},
+                        {"origin": [-0.5, 42.5, -5], "size": [1, 1, 2], "uv": [108, 14]},
+                        {"origin": [-0.5, 42.5, 3], "size": [1, 1, 2], "uv": [108, 14]}
                     ]}
                 ]
             }
@@ -110,15 +109,23 @@ def create_tesla_model():
     }
     for i in range(4):
         y_offset = 14 + i * 6
-        radius = 5 - i * 0.5
+        radius = 6 - i * 0.5
         ring_bone = f"ring_{i}"
+        cubes = []
+        for j in range(8):
+            angle = j * 45
+            cubes.append({
+                "origin": [-1, y_offset, -radius - 1], 
+                "size": [2, 1, 6], 
+                "pivot": [0, y_offset, 0], 
+                "rotation": [0, angle, 0],
+                "uv": [0, 70 + i*12]
+            })
         model["minecraft:geometry"][0]["bones"].append({
             "name": ring_bone,
             "parent": "rings",
             "pivot": [0, y_offset, 0],
-            "cubes": [
-                {"origin": [-radius, y_offset, -radius], "size": [radius*2, 2, radius*2], "uv": [0, 70 + i*12]}
-            ]
+            "cubes": cubes
         })
     with open('src/main/resources/assets/flux_turret/geo/block/tesla_coil.geo.json', 'w') as f:
         json.dump(model, f, indent=4)
@@ -335,16 +342,19 @@ def draw_textures():
     
     # --- PRISM TOWER ---
     img = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
-    add_noise(img, [0, 0, 64, 32], (80, 85, 90))
-    add_noise(img, [0, 32, 64, 64], (90, 95, 100))
-    add_noise(img, [108, 0, 116, 64], (150, 155, 160))
-    add_noise(img, [64, 0, 108, 32], (130, 135, 140))
-    add_noise(img, [116, 0, 128, 64], (10, 50, 80))
-    add_noise(img, [88, 50, 112, 74], (0, 200, 255))
-    add_noise(img, [40, 0, 60, 20], (200, 200, 220))
+    add_noise(img, [0, 0, 64, 32], (240, 245, 250), 5) # White armor
+    add_noise(img, [0, 32, 64, 64], (180, 185, 190), 5) # Light gray
+    add_noise(img, [108, 0, 116, 64], (80, 85, 90), 5) # Dark metal rods
+    add_noise(img, [64, 0, 108, 32], (130, 135, 140), 5)
+    add_noise(img, [116, 0, 128, 64], (30, 30, 35), 5) # Very dark metal
+    add_noise(img, [88, 50, 112, 74], (0, 200, 255), 5) # Crystals
+    add_noise(img, [40, 0, 60, 20], (200, 200, 220), 5)
+    d = ImageDraw.Draw(img)
+    for i in range(0, 64, 8):
+        d.line([(i, 0), (0, i)], fill=(255, 200, 0, 255), width=2)
+        d.line([(i+4, 0), (0, i+4)], fill=(0, 0, 0, 255), width=2)
     img.save('src/main/resources/assets/flux_turret/textures/block/prism_tower.png')
     
-    # Rename to _glowing to fix Geckolib 4 issue
     emissive = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
     ed = ImageDraw.Draw(emissive)
     ed.rectangle([88, 50, 112, 74], fill=(255, 255, 255, 255))
@@ -353,16 +363,20 @@ def draw_textures():
 
     # --- TESLA COIL ---
     img_t = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
-    add_noise(img_t, [0, 0, 64, 64], (60, 60, 65))
-    add_noise(img_t, [64, 0, 88, 32], (180, 180, 190))
-    add_noise(img_t, [0, 70, 64, 120], (200, 150, 50))
-    add_noise(img_t, [88, 0, 112, 24], (50, 200, 255))
+    add_noise(img_t, [0, 0, 64, 64], (30, 30, 35), 5)
+    add_noise(img_t, [64, 0, 88, 32], (80, 85, 90), 5)
+    add_noise(img_t, [0, 70, 64, 120], (240, 180, 50), 5)
+    add_noise(img_t, [88, 0, 112, 24], (50, 200, 255), 5)
+    dt = ImageDraw.Draw(img_t)
+    for i in range(0, 28, 6):
+        dt.rectangle([64, i, 76, i+3], fill=(255, 200, 0, 255))
+        dt.rectangle([64, i+3, 76, i+6], fill=(20, 20, 20, 255))
     img_t.save('src/main/resources/assets/flux_turret/textures/block/tesla_coil.png')
     
     em_t = Image.new('RGBA', (128, 128), (0, 0, 0, 0))
     edt = ImageDraw.Draw(em_t)
     edt.rectangle([88, 0, 112, 24], fill=(255, 255, 255, 255))
-    edt.rectangle([0, 70, 64, 120], fill=(255, 200, 50, 128))
+    edt.rectangle([0, 70, 64, 120], fill=(255, 200, 50, 180))
     em_t.save('src/main/resources/assets/flux_turret/textures/block/tesla_coil_glowing.png')
 
     # --- GATLING TURRET ---
