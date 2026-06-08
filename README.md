@@ -1,4 +1,12 @@
-# gxFlux - 高能防御炮塔系统
+# Flux Turret - Advanced Defense System
+
+[English](#english) | [中文](#中文)
+
+---
+
+<a name="english"></a>
+
+## English
 
 ![Minecraft 1.20.1](https://img.shields.io/badge/Minecraft-1.20.1-brightgreen.svg)
 ![Forge](https://img.shields.io/badge/Forge-47.4.10-orange.svg)
@@ -6,257 +14,280 @@
 ![Version](https://img.shields.io/badge/Version-1.3-blue.svg)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-green.svg)
 
-gxFlux 是一个面向 Minecraft Forge 1.20.1 的 FE 驱动防御炮塔模组，灵感来源于《红色警戒 2》的经典防御建筑。提供四种不同定位的自动防御炮塔和一套心灵信标防御雷达系统，从近距速射到超远程轰炸，从被动防御到主动诱捕，满足各种防御需求。
+**Flux Turret** is a Forge Energy-powered automated defense mod for Minecraft 1.20.1, inspired by the iconic defense structures from *Command & Conquer: Red Alert 2*. Build your fortress with intelligent turrets and a psychic beacon system!
 
-## 核心特性
+### ✨ Key Features
 
-- **Forge Energy 驱动**：所有炮塔只接收 FE，不向外输出能量，适合接入常见科技模组的发电机、线缆和储能系统。
-- **光凌塔网络**：光凌塔会自动选举主塔，并把附近通电的从塔接入支援树，提升射程和最终伤害。
-- **特斯拉线圈**：不参与连锁，单塔射程和伤害略高，使用蓝紫色电弧攻击目标。
-- **加特林炮塔**：低射程、低单发伤害，但持续攻击会逐渐提速，适合近距离持续压制。
-- **巨炮**：2×2×1 多方块结构，超远程轰炸，范围伤害不破坏地形，拥有炮管后坐力动画。
-- **心灵信标**：红警2风格的心灵雷达，白天广播增益Buff，夜晚诱捕怪潮围攻，坚守到日出获得补给箱。
-- **服务端结算**：目标选择、视线检测、能量扣除和伤害结算均在服务端完成，客户端负责模型、旋转和攻击特效。
-- **GeckoLib 模型渲染**：使用 GeckoLib 加载 3D 方块模型，并通过自定义渲染器绘制光束、电弧、曳光和爆炸等视觉效果。
-- **配置界面**：游戏内可查看所有炮塔参数，详细数值可在配置文件中修改。
-- **能量晶体**：可充能的 FE 存储方块，放在炮塔旁自动供电，支持熔炉充电、红石右键充电和合成充能。
+- **🔋 Forge Energy Powered** - All turrets run on FE, compatible with tech mods
+- **⚡ Tesla Coil** - High-voltage electric arcs that chain between enemies
+- **🌈 Prism Tower** - Network-linked beam weapons with support bonuses
+- **🔫 Gatling Turret** - Rapid-fire suppression that accelerates over time
+- **💥 Grand Cannon** - Long-range artillery with parabolic trajectory
+- **🧠 Psychic Beacon** - Mind control radar that attracts enemy waves
+- **🎮 GeckoLib Animations** - Smooth 3D models with dynamic effects
+- **⚙️ Fully Configurable** - Customize all turret parameters
 
-## 炮塔概览
+### 🎯 Turret Overview
 
-| 炮塔 | 定位 | 射程 | 伤害 | 消耗 | 特点 |
-| --- | --- | ---: | ---: | ---: | --- |
-| 光凌塔 Prism Tower | 中射程连锁炮塔 | 16.5 - 24 格 | `10 * (1 + min(支援数, 12) * 0.35)` | 主塔 1000 FE / 从塔 500 FE | 支援塔越多，射程和伤害越高 |
-| 特斯拉线圈 Tesla Coil | 单体电击炮塔 | 18.5 格 | 12 | 1400 FE | 无连锁，高耗电，蓝紫色闪电攻击 |
-| 加特林炮塔 Gatling Turret | 近距离压制炮塔 | 11 格 | 0.5 / 发 | 30 FE / 发 | 持续开火会从 12 tick/发提升到 2 tick/发 |
-| 巨炮 Grand Cannon | 超远程轰炸炮塔 | 64 格 | 50 (范围) | 8000 FE | 2×2×1 多方块，范围爆炸不破坏地形，抛物线炮击无视视线遮挡 |
+| Turret | Type | Range | Damage | Energy | Special |
+|--------|------|------:|-------:|-------:|---------|
+| **Prism Tower** | Beam Weapon | 16.5-24 | 10 × (1 + supports × 0.35) | 1000 FE | Network support bonus |
+| **Tesla Coil** | Electric Arc | 18.5 | 12 | 1400 FE | Overcharge mode available |
+| **Gatling Turret** | Rapid Fire | 11 | 0.5/shot | 30 FE/shot | Spin-up acceleration |
+| **Grand Cannon** | Artillery | 64 | 50 (AoE) | 8000 FE | Ignores line of sight |
 
-## 心灵信标
+### 🧠 Psychic Beacon System
 
-心灵信标是灵感来自红警2的防御雷达系统，需要用金属方块（铁/金/钻石/绿宝石/下界合金）搭建金字塔底座激活。
+Build a pyramid structure beneath the beacon to activate it:
 
-### 工作流程
+- **☀️ Day Mode** - Broadcasts buff effects (Speed, Resistance, Strength)
+- **🌙 Night Mode** - Attracts enemy mobs creating defensive waves
+- **📦 Dawn Rewards** - Survive until dawn for supply crates
+- **💎 Threat Levels** - 1-4 tiers based on pyramid size
+- **⚡ Stability System** - Beacon explodes if stability reaches zero
 
-1. **搭建底座**：在信标下方用金属方块搭建1-4层金字塔（层数决定威胁等级）
-2. **充能激活**：用红石粉/红石块右键充能，或接入FE线缆供电
-3. **白天待机**（06:00-13:00）：广播增益Buff（速度/抗性/力量），扫描底座等级
-4. **夜晚战斗**（13:00-23:00）：诱捕怪物围攻信标，怪物会向信标移动
-5. **清晨合成**（06:00）：若击杀数达标且能量充足，生成补给箱奖励
+### 🔋 Energy Crystal
 
-### 状态说明
+Portable FE storage block (100,000 FE capacity):
 
-| 状态 | 说明 |
-| --- | --- |
-| 离线 | 无能量、被红石信号禁用、或手动关闭 |
-| 待机中 | 有能量，白天广播Buff |
-| 战斗防卫中 | 夜晚诱捕怪潮，怪物向信标进攻 |
-| 崩溃 | 稳定度归零，信标爆炸 |
-| 超载警告 | 检测到外部红石干扰，3秒后紧急关断 |
+**Charging Methods:**
+- Furnace smelting → Full charge
+- Place above active furnace → 50 FE/t
+- Right-click with redstone dust → 2,500 FE
+- Right-click with redstone block → 22,500 FE
+- Crafting with redstone block → Full charge
 
-### 关键机制
+**Auto-Supply:** Place next to turrets for automatic power delivery (200 FE/t)
 
-- **威胁等级**：由金字塔层数决定（0-4），影响广播半径、怪物波次强度和补给箱品质
-- **稳定度**：初始100，附近有怪物时下降，归零则信标崩溃爆炸
-- **补给箱**：清晨根据威胁等级和击杀数生成，高级别可掉落下界之星
-- **紧急关断**：红石信号干扰时3秒倒计时，关断后清除所有被诱捕的怪物
-- **GUI面板**：可查看能量、状态、威胁等级、炮塔数量、击杀数等，支持开关控制
+### 📦 Installation
 
-### 冲天光柱
+1. Download from [Releases](../../releases)
+2. Install [Forge 47.4.10](https://files.minecraftforge.net/) for Minecraft 1.20.1
+3. Install [GeckoLib 4.8.3](https://www.curseforge.com/minecraft/mc-mods/geckolib)
+4. Place `flux_turret-1.3.jar` in your `mods` folder
+5. Launch the game and start building!
 
-心灵信标激活后会发射冲天光柱，颜色随状态变化：
-- 待机：品紫偏红
-- 战斗：深红
-- 超载警告：红色脉冲闪烁
+### 🎨 Visual Effects
 
-## 能量晶体
+**New in v1.3:**
+- ⚡ Electric arcs with zigzag lightning effect (Tesla Coil)
+- 🌈 Rainbow beam with intensity scaling (Prism Tower)
+- 💨 Muzzle flash, smoke, and shell casings (Gatling)
+- 💥 Enhanced explosions with shockwave rings (Grand Cannon)
+- 📳 Screen shake for powerful weapons
+- 🎵 Dynamic sound pitch based on turret state
 
-能量晶体是模组的核心供电方块，容量 100,000 FE，可向相邻的炮塔自动输出能量（200 FE/t）。
+### 🛠️ Development
 
-### 充能方式
+**Requirements:**
+- Minecraft 1.20.1
+- Forge 47.4.10
+- Java 17
+- GeckoLib 4.8.3
 
-| 方式 | 充电量 | 说明 |
-| --- | ---: | --- |
-| 熔炉烧炼 | 满电 (100,000 FE) | 将空晶体放入熔炉烧制，得到满电晶体 |
-| 熔炉上方充电 | 50 FE/t | 将晶体方块放在燃烧的熔炉上方，持续充能 |
-| 红石粉右键 | 2,500 FE | 手持红石粉右键晶体方块 |
-| 红石块右键 | 22,500 FE | 手持红石块右键晶体方块 |
-| 工作台合成 | 满电 (100,000 FE) | 空晶体 + 红石块 = 满电晶体（无序合成） |
-
-### 放电与掉落
-
-- 晶体方块会自动向相邻的所有 FE 接收端推送能量，无需线缆。
-- 破坏有电的晶体方块 → 掉落带电量的能量晶体物品（NBT 保存电量）。
-- 破坏空电的晶体方块 → 掉落空能量晶体物品，可重新充能。
-- 晶体方块会根据电量切换材质：有电时为青蓝色发光，空电时为暗灰色。
-- 支持比较器输出（0-15 信号强度对应电量比例）。
-
-## 光凌塔机制
-
-光凌塔会周期性扫描目标和附近炮塔。满足能量、视线和距离条件的节点会参与主塔选举，胜出的主塔成为支援树根节点。
-
-从塔必须有足够能量，并且能通过每跳 12 格以内的连接加入当前主塔的支援树。主塔会统计同一支援树内的通电从塔数量，用于计算射程和伤害。
-
-```text
-实际扫描射程 = min(24, 16.5 + 潜在支援数 * 0.75)
-实际伤害 = 10 * (1 + min(实际支援数, 12) * 0.35)
-```
-
-## 巨炮机制
-
-巨炮是一个 2×2×1 的多方块结构，放置核心方块后自动生成其余 3 个结构方块。4 个方块均拥有 BlockEntity，任意方块接入电缆均可充能（能量自动代理到核心块）。
-
-- **抛物线炮击**：巨炮使用抛物线弹道，无需视线即可攻击目标，仅跳过完全处于地下的目标。
-- **范围伤害**：炮弹在目标位置造成范围伤害和击退，但不破坏地形。
-- **蓄力开火**：40 tick 蓄力后发射，配合炮管扬起和后坐力动画。
-- **结构完整性**：任意方块被破坏时整个结构销毁，只掉落一个物品。
-
-## 合成方式
-
-### 光凌塔 Prism Tower
-
-```text
- D
- I
-III
-```
-
-- `D` = 钻石
-- `I` = 铁块
-
-### 特斯拉线圈 Tesla Coil
-
-```text
- L
-CRC
-IDI
-```
-
-- `L` = 避雷针
-- `C` = 铜块
-- `R` = 红石块
-- `I` = 铁块
-- `D` = 钻石
-
-### 加特林炮塔 Gatling Turret
-
-```text
- C
-RDR
-III
-```
-
-- `C` = 弩
-- `R` = 红石
-- `D` = 发射器
-- `I` = 铁锭
-
-### 巨炮 Grand Cannon
-
-```text
- I
-RDR
-III
-```
-
-- `I` = 铁块
-- `R` = 红石块
-- `D` = 钻石块
-
-### 心灵信标 Psychic Beacon
-
-```text
- R
-DID
-III
-```
-
-- `R` = 红石块
-- `D` = 钻石
-- `I` = 铁块
-
-### 空能量晶体 Empty Crystal
-
-```text
- D
-DQD
- D
-```
-
-- `D` = 钻石
-- `Q` = 石英
-
-### 能量晶体充能
-
-- **熔炉烧炼**：空晶体 → 能量晶体（满电）
-- **工作台合成**：空晶体 + 红石块 → 能量晶体（满电，无序合成）
-
-## 使用方式
-
-1. 制作空能量晶体，通过熔炉烧炼或工作台合成充能为能量晶体。
-2. 将能量晶体方块放在炮塔旁边，它会自动向炮塔供电（200 FE/t）。
-3. 放置炮塔方块（巨炮只需放置核心方块，其余自动生成）。
-4. 使用兼容 FE 的线缆、管道或发电设备为炮塔供电（巨炮任意方块均可接入）。
-5. 确保炮塔和目标之间有可通过的视线（巨炮除外，抛物线炮击无需视线）。
-6. 光凌塔可以按 10-12 格左右间距布置阵列，形成稳定的支援网络。
-7. 特斯拉线圈适合单点高伤害防御，加特林炮塔适合近距离持续压制。
-8. 巨炮适合远距离轰炸，注意 40 tick 蓄力时间和较高的能量消耗。
-9. 手持红石粉或红石块右键能量晶体可快速充能。
-10. 搭建心灵信标金字塔底座，充能后白天广播Buff、夜晚诱捕怪潮，坚守到日出获得补给箱。
-
-## 更新日志
-
-### v1.3
-
-- 新增心灵信标（Psychic Beacon）：红警2风格防御雷达系统
-  - 金字塔底座激活，威胁等级1-4
-  - 白天广播增益Buff，夜晚诱捕怪潮
-  - 冲天光柱效果，颜色随状态变化（品紫/深红/红色脉冲）
-  - 激活状态发光（亮度15）
-  - GUI控制面板：能量条动画、状态指示灯、炮塔计数、开关控制
-  - 清晨补给箱奖励，高级别可掉落下界之星
-  - 稳定度系统，崩溃时爆炸
-  - 红石信号紧急关断机制
-- 修复高塔碰撞箱问题：光凌塔/特斯拉线圈/加特林炮塔碰撞箱现在与视觉高度一致
-- 修复心灵信标补给箱生成位置逻辑
-- 修复能量水晶降频后输出限制问题
-- 安全修复：网络包距离检查收紧
-
-## 工程要点
-
-- **能力生命周期**：FE capability 使用可恢复的 `LazyOptional`，避免区块卸载后充能接口永久失效。
-- **能量代理**：巨炮非核心方块通过 `getCapability` 重定向能量请求到核心方块，实现任意方块充电。
-- **输入-only 能量模型**：外部 capability 只允许输入，内部逻辑通过专用消耗方法扣除能量。
-- **目标缓存节流**：炮塔会分频刷新目标和邻居缓存，降低大规模阵列每 tick 扫描带来的 TPS 压力。
-- **视觉同步**：服务端同步目标、开火时间、支援数量和能量状态，客户端保留短暂光束、电弧、曳光或爆炸残影。
-- **多方块渲染**：巨炮仅核心方块渲染模型和播放动画，非核心方块使用 `RenderShape.INVISIBLE`。
-- **低面数模型**：使用 128x128 像素贴图和 GeckoLib 方块模型，兼顾识别度和渲染开销。
-- **碰撞箱匹配**：所有塔类方块的碰撞箱与视觉高度一致，防止重叠放置。
-
-## 开发环境
-
-- Minecraft: 1.20.1
-- Forge: 47.4.10
-- Java: 17
-- GeckoLib: 4.8.3
-- Gradle: 8.11
-
+**Build:**
 ```bash
-chmod +x gradlew
 ./gradlew build
 ```
 
-GitHub Actions 会在 push、pull request 和手动触发时运行 `./gradlew --no-daemon build`，并上传 `build/libs/*.jar` 作为构建产物。
+**Documentation:**
+- [Changelog](docs/CHANGELOG.md)
+- [Visual Effects Guide](docs/VISUAL_EFFECTS_OPTIMIZATION.md)
+- [Blockbench Modeling Guide](docs/BLOCKBENCH_MODELING_GUIDE.md)
 
-## 许可
+### 📜 License
+
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+
+### 👤 Author
+
+gxmst
+
+---
+
+<a name="中文"></a>
+
+## 中文
+
+**Flux Turret（高能防御炮塔）** 是一个面向 Minecraft 1.20.1 的 Forge Energy 驱动防御炮塔模组，灵感来源于《红色警戒 2》的经典防御建筑。使用智能炮塔和心灵信标系统打造你的防御堡垒！
+
+### ✨ 核心特性
+
+- **🔋 FE 能量驱动** - 所有炮塔使用 Forge Energy，兼容科技模组
+- **⚡ 特斯拉线圈** - 高压电弧攻击，可连锁敌人
+- **🌈 光棱塔** - 网络支援光束武器，支援越多越强
+- **🔫 加特林炮塔** - 快速射击压制，持续开火加速
+- **💥 巨炮** - 远程火炮，抛物线弹道
+- **🧠 心灵信标** - 心灵控制雷达，吸引敌人波次
+- **🎮 GeckoLib 动画** - 流畅的 3D 模型和动态效果
+- **⚙️ 完全可配置** - 自定义所有炮塔参数
+
+### 🎯 炮塔概览
+
+| 炮塔 | 类型 | 射程 | 伤害 | 能量 | 特点 |
+|------|------|-----:|-----:|-----:|------|
+| **光棱塔** | 光束武器 | 16.5-24 | 10 × (1 + 支援数 × 0.35) | 1000 FE | 网络支援加成 |
+| **特斯拉线圈** | 电弧攻击 | 18.5 | 12 | 1400 FE | 可过载模式 |
+| **加特林炮塔** | 快速射击 | 11 | 0.5/发 | 30 FE/发 | 转速加速 |
+| **巨炮** | 火炮轰炸 | 64 | 50 (范围) | 8000 FE | 无视遮挡 |
+
+### 🧠 心灵信标系统
+
+在信标下方搭建金字塔结构以激活：
+
+- **☀️ 白天模式** - 广播增益效果（速度、抗性、力量）
+- **🌙 夜晚模式** - 吸引敌对生物形成防御波次
+- **📦 黎明奖励** - 坚守到天明获得补给箱
+- **💎 威胁等级** - 根据金字塔大小分为 1-4 级
+- **⚡ 稳定系统** - 稳定度归零时信标爆炸
+
+### 🔋 能量晶体
+
+便携式 FE 存储方块（容量 100,000 FE）：
+
+**充能方式：**
+- 熔炉烧炼 → 满电
+- 放置在燃烧的熔炉上方 → 50 FE/t
+- 右键红石粉 → 2,500 FE
+- 右键红石块 → 22,500 FE
+- 与红石块合成 → 满电
+
+**自动供电：** 放置在炮塔旁边自动供电（200 FE/t）
+
+### 📦 安装方法
+
+1. 从 [Releases](../../releases) 下载
+2. 安装 [Forge 47.4.10](https://files.minecraftforge.net/) for Minecraft 1.20.1
+3. 安装 [GeckoLib 4.8.3](https://www.curseforge.com/minecraft/mc-mods/geckolib)
+4. 将 `flux_turret-1.3.jar` 放入 `mods` 文件夹
+5. 启动游戏开始建造！
+
+### 🎨 视觉效果
+
+**v1.3 新增：**
+- ⚡ 锯齿状闪电电弧效果（特斯拉线圈）
+- 🌈 彩虹光束与强度缩放（光棱塔）
+- 💨 枪口闪光、烟雾、弹壳（加特林）
+- 💥 增强爆炸与冲击波环（巨炮）
+- 📳 强力武器屏幕震动
+- 🎵 基于炮塔状态的动态音效
+
+### 🛠️ 开发
+
+**环境要求：**
+- Minecraft 1.20.1
+- Forge 47.4.10
+- Java 17
+- GeckoLib 4.8.3
+
+**构建：**
+```bash
+./gradlew build
+```
+
+**文档：**
+- [更新日志](docs/CHANGELOG.md)
+- [视觉效果指南](docs/VISUAL_EFFECTS_OPTIMIZATION.md)
+- [Blockbench 建模指南](docs/BLOCKBENCH_MODELING_GUIDE.md)
+
+### 📜 许可
 
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 本作品采用 署名-非商业性使用-相同方式共享 4.0 国际 (CC BY-NC-SA 4.0) 协议进行许可。
 
-您可以自由地共享和修改本作品，但必须遵守以下条件：
-- **署名**：必须给出适当的署名
-- **非商业性使用**：不得将本作品用于商业目的
-- **相同方式共享**：基于本作品的修改必须以相同的协议发布
-
-## 作者
+### 👤 作者
 
 gxmst
+
+---
+
+## 🎮 Quick Start / 快速开始
+
+### Crafting Recipes / 合成配方
+
+<details>
+<summary>Click to expand / 点击展开</summary>
+
+#### Prism Tower / 光棱塔
+```
+ D
+ I
+III
+```
+D = Diamond / 钻石 | I = Iron Block / 铁块
+
+#### Tesla Coil / 特斯拉线圈
+```
+ L
+CRC
+IDI
+```
+L = Lightning Rod / 避雷针 | C = Copper Block / 铜块  
+R = Redstone Block / 红石块 | I = Iron Block / 铁块 | D = Diamond / 钻石
+
+#### Gatling Turret / 加特林炮塔
+```
+ C
+RDR
+III
+```
+C = Crossbow / 弩 | R = Redstone / 红石  
+D = Dispenser / 发射器 | I = Iron Ingot / 铁锭
+
+#### Grand Cannon / 巨炮
+```
+ I
+RDR
+III
+```
+I = Iron Block / 铁块 | R = Redstone Block / 红石块  
+D = Diamond Block / 钻石块
+
+#### Psychic Beacon / 心灵信标
+```
+ R
+DID
+III
+```
+R = Redstone Block / 红石块 | D = Diamond / 钻石  
+I = Iron Block / 铁块
+
+#### Energy Crystal / 能量晶体
+```
+ D
+DQD
+ D
+```
+D = Diamond / 钻石 | Q = Quartz / 石英
+
+</details>
+
+---
+
+## 🌟 Screenshots / 截图
+
+*Coming soon / 敬请期待*
+
+---
+
+## 🤝 Contributing / 参与贡献
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+欢迎贡献！请随时提交问题和拉取请求。
+
+---
+
+## 📞 Contact / 联系方式
+
+- GitHub: [gxmst](https://github.com/gxmst)
+- Issues: [Report a bug](../../issues)
+
+---
+
+**Made with ❤️ for the Minecraft community**  
+**为 Minecraft 社区用心打造**
+
