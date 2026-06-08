@@ -2,6 +2,7 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
@@ -13,6 +14,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayDeque;
@@ -376,7 +378,17 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                             // Reset invulnerability to ensure damage is applied
                             closestMonster.invulnerableTime = 0;
                             closestMonster.hurt(level.damageSources().magic(), damage);
-                            level.playSound(null, pos, ModRegistry.PRISM_SHOOT.get(), SoundSource.BLOCKS, 0.25f, 0.6f + level.random.nextFloat() * 0.08f);
+
+                            // Enhanced Red Alert style prism beam
+                            Vec3 prismTop = Vec3.atCenterOf(pos).add(0, 2.0, 0);
+                            Vec3 targetPos = closestMonster.position().add(0, closestMonster.getBbHeight() * 0.5, 0);
+                            TurretVisualEffects.spawnPrismBeam(level, prismTop, targetPos, be.cachedSupportCount);
+
+                            // Sound pitch varies with support count (more supports = higher pitch)
+                            float pitchBase = 0.6f + (damageSupports * 0.05f);
+                            TurretVisualEffects.playTurretSound(level, pos, ModRegistry.PRISM_SHOOT.get(),
+                                0.25f, pitchBase, 0.08f);
+
                             be.isFiring = true;
                             be.lastFireTime = level.getGameTime();
                             be.attackCooldown = MASTER_COOLDOWN;

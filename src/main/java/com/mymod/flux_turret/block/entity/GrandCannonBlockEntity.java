@@ -3,6 +3,7 @@ package com.mymod.flux_turret.block.entity;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.GrandCannonBlock;
+import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
@@ -13,6 +14,7 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -246,7 +248,11 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
 
         // Play cannon fire sound (vanilla, lower volume)
-        level.playSound(null, pos, SoundEvents.GENERIC_EXPLODE, SoundSource.BLOCKS, 0.8f, 0.6f);
+        TurretVisualEffects.playTurretSound(level, pos, SoundEvents.GENERIC_EXPLODE, 0.8f, 0.6f, 0.1f);
+
+        // Recoil smoke from barrel
+        Vec3 backDirection = new Vec3(-facing.getStepX(), 0, -facing.getStepZ());
+        TurretVisualEffects.spawnCannonRecoilSmoke(level, muzzlePos, backDirection);
 
         // Spawn parabolic particle trail (server-side)
         if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
@@ -287,29 +293,15 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             monster.setDeltaMovement(monster.getDeltaMovement().add(knockDir.x * 1.5, 0.5, knockDir.z * 1.5));
         }
 
-        // Impact sound (vanilla, moderate volume)
-        level.playSound(null, targetPos.x, targetPos.y, targetPos.z,
-                SoundEvents.GENERIC_EXPLODE, SoundSource.BLOCKS, 1.0f, 0.8f);
+        // Enhanced Red Alert style explosion
+        TurretVisualEffects.spawnCannonExplosion(level, targetPos, (float) explosionRadius);
 
-        // Impact particles
-        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            for (int i = 0; i < 15; i++) {
-                double dx = (level.random.nextDouble() - 0.5) * explosionRadius * 2;
-                double dy = (level.random.nextDouble() - 0.5) * explosionRadius * 2;
-                double dz = (level.random.nextDouble() - 0.5) * explosionRadius * 2;
-                serverLevel.sendParticles(ParticleTypes.EXPLOSION,
-                        targetPos.x + dx, targetPos.y + dy, targetPos.z + dz,
-                        1, 0, 0, 0, 0);
-            }
-            for (int i = 0; i < 10; i++) {
-                double dx = (level.random.nextDouble() - 0.5) * explosionRadius;
-                double dy = (level.random.nextDouble() - 0.5) * explosionRadius;
-                double dz = (level.random.nextDouble() - 0.5) * explosionRadius;
-                serverLevel.sendParticles(ParticleTypes.LARGE_SMOKE,
-                        targetPos.x + dx, targetPos.y + dy, targetPos.z + dz,
-                        1, 0, 0.1, 0, 0.02);
-            }
-        }
+        // Screen shake for nearby players
+        TurretVisualEffects.createScreenShake(level, BlockPos.containing(targetPos), 0.5f, 32);
+
+        // Impact sound (vanilla, moderate volume)
+        TurretVisualEffects.playTurretSound(level, BlockPos.containing(targetPos),
+            SoundEvents.GENERIC_EXPLODE, 1.0f, 0.8f, 0.15f);
     }
 
     @Override

@@ -2,14 +2,18 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.util.TurretVisualEffects;
+import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     private static final int MAX_RECEIVE = 1200;
@@ -171,7 +175,17 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                         // Reset invulnerability to ensure damage is applied
                         target.invulnerableTime = 0;
                         target.hurt(level.damageSources().magic(), finalDamage);
-                        level.playSound(null, pos, ModRegistry.TESLA_SHOOT.get(), SoundSource.BLOCKS, 0.75f, 1.0f);
+
+                        // Enhanced Red Alert style electric arc
+                        Vec3 coilTop = Vec3.atCenterOf(pos).add(0, 2.5, 0);
+                        Vec3 targetPos = target.position().add(0, target.getBbHeight() * 0.5, 0);
+                        TurretVisualEffects.spawnElectricArc(level, coilTop, targetPos);
+
+                        // Sound with pitch variation based on overcharge
+                        float pitch = be.isOvercharged() ? 1.3f : 1.0f;
+                        TurretVisualEffects.playTurretSound(level, pos, ModRegistry.TESLA_SHOOT.get(),
+                            0.75f, pitch, 0.15f);
+
                         be.isFiring = true;
                         be.lastFireTime = level.getGameTime();
                         be.attackCooldown = ATTACK_COOLDOWN;

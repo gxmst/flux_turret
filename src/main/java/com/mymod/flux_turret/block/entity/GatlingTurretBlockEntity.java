@@ -2,6 +2,7 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundSource;
@@ -9,6 +10,7 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     private static final int MAX_RECEIVE = 800;
@@ -129,10 +131,24 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
                 // Reset invulnerability to allow rapid successive hits from gatling
                 target.invulnerableTime = 0;
                 target.hurt(level.damageSources().magic(), TurretConfig.GATLING_DAMAGE.get().floatValue());
+
+                // Enhanced Red Alert style visual effects
+                Vec3 turretPos = Vec3.atCenterOf(pos).add(0, 1.2, 0);
+                Vec3 targetPos = target.getEyePosition(0.0f);
+                Vec3 direction = targetPos.subtract(turretPos).normalize();
+
+                // Muzzle flash and smoke
+                TurretVisualEffects.spawnGatlingMuzzleFlash(level, turretPos, direction);
+
+                // Sound with pitch variation based on spin speed
                 if (level.getGameTime() - be.lastSoundTime >= SOUND_INTERVAL) {
-                    level.playSound(null, pos, ModRegistry.GATLING_SHOOT.get(), SoundSource.BLOCKS, 0.45f, 1.0f);
+                    float spinProgress = be.spinUp / (float) MAX_SPIN;
+                    float basePitch = 0.9f + spinProgress * 0.3f; // Higher pitch when spinning faster
+                    TurretVisualEffects.playTurretSound(level, pos, ModRegistry.GATLING_SHOOT.get(),
+                        0.5f, basePitch, 0.1f);
                     be.lastSoundTime = level.getGameTime();
                 }
+
                 be.isFiring = true;
                 be.lastFireTime = level.getGameTime();
                 be.attackCooldown = interval;
