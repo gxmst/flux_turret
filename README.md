@@ -92,8 +92,6 @@ Portable FE storage block (100,000 FE capacity):
 
 **Documentation:**
 - [Changelog](docs/CHANGELOG.md)
-- [Visual Effects Guide](docs/VISUAL_EFFECTS_OPTIMIZATION.md)
-- [Blockbench Modeling Guide](docs/BLOCKBENCH_MODELING_GUIDE.md)
 
 ### 📜 License
 
@@ -189,8 +187,6 @@ gxmst
 
 **文档：**
 - [更新日志](docs/CHANGELOG.md)
-- [视觉效果指南](docs/VISUAL_EFFECTS_OPTIMIZATION.md)
-- [Blockbench 建模指南](docs/BLOCKBENCH_MODELING_GUIDE.md)
 
 ### 📜 许可
 

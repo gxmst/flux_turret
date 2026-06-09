@@ -6,10 +6,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
@@ -82,36 +84,37 @@ public class GrandCannonBlock extends BaseEntityBlock {
             Direction facing = state.getValue(FACING);
 
             if (part == CannonPart.BACK_LEFT) {
-                // Core broken: remove all parts, drop item at core
+                // Core removed: tear down the generated parts without creating extra drops.
                 for (CannonPart p : CannonPart.values()) {
                     if (p == CannonPart.BACK_LEFT) continue;
                     BlockPos partPos = p.offset(pos, facing);
                     BlockState partState = level.getBlockState(partPos);
                     if (partState.getBlock() == this) {
-                        // Use setBlock with AIR to avoid triggering onRemove recursively
-                        level.setBlock(partPos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 18);
+                        level.setBlock(partPos, Blocks.AIR.defaultBlockState(), 18);
                     }
-                }
-                // Drop item at core position
-                if (!level.isClientSide) {
-                    net.minecraft.world.item.ItemStack dropStack = new net.minecraft.world.item.ItemStack(this);
-                    net.minecraft.world.entity.item.ItemEntity itemEntity = new net.minecraft.world.entity.item.ItemEntity(
-                            level, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5, dropStack);
-                    level.addFreshEntity(itemEntity);
                 }
             } else {
                 // Part broken: find core and destroy entire structure
-                // Let the core's onRemove handle item dropping to avoid double drops
                 BlockPos corePos = part.getCorePos(pos, facing);
                 BlockState coreState = level.getBlockState(corePos);
                 if (coreState.getBlock() == this && coreState.hasProperty(PART)
                         && coreState.getValue(PART) == CannonPart.BACK_LEFT) {
-                    // Remove core last — its onRemove will drop the item and clean up remaining parts
-                    level.setBlock(corePos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 3);
+                    level.setBlock(corePos, Blocks.AIR.defaultBlockState(), 3);
                 }
             }
         }
         super.onRemove(state, level, pos, newState, isMoving);
+    }
+
+    @Override
+    public void playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
+        if (!level.isClientSide && !player.isCreative()) {
+            CannonPart part = state.getValue(PART);
+            Direction facing = state.getValue(FACING);
+            BlockPos corePos = part == CannonPart.BACK_LEFT ? pos : part.getCorePos(pos, facing);
+            popResource(level, corePos, new ItemStack(this));
+        }
+        super.playerWillDestroy(level, pos, state, player);
     }
 
     @Override

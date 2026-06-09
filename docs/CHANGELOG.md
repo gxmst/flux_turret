@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- Grand Cannon now drops a single item only when broken by a non-creative player.
+- Psychic Beacon monster cleanup now matches the specific beacon target before discarding spawned mobs.
+- Removed the unused `battleDuration` config entry from Psychic Beacon settings.
+
+### Changed
+- Removed temporary report files and Forge MDK template documents from the repository.
+
+---
+
 ## [1.3] - 2026-06-09
 
 ### Added
@@ -19,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **New Item**: Empty Crystal
   - Crafting component for advanced turrets
-  - Loot table integration
+  - Used by Energy Crystal charging recipes
 
 - **Full Internationalization**
   - Chinese (zh_cn) translations
@@ -27,13 +39,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - 8 new message keys for targeting system
 
 ### Changed
-- **Prism Tower Performance** (40x improvement)
-  - Implemented cache invalidation system
-  - Reduced BFS calculations from every tick to on-demand
+- **Prism Tower Performance**
+  - Added cached neighbor and support scans
+  - Reduced repeated support-network recalculations
   - Support network updates only when changed
 
 - **Threat Priority Targeting**
-  - High-threat enemies (Creepers, Endermen) now prioritized
+  - High-threat enemies such as Creepers, Witches, Blazes, and Wither Skeletons now prioritized
   - Distance-based fallback for equal threat levels
 
 - **Sound Effects**
@@ -50,12 +62,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **Thread Safety**
-  - Client-side check before network packet processing
-  - Prevents server thread crashes
-
-- **Memory Leaks**
-  - Entity references properly cleaned after removal
-  - Weak reference patterns for cached targets
+  - Client-side check before applying block entity update packets
 
 - **Explosion Safety**
   - PsychicBeacon explosion uses BLOCK mode
@@ -64,7 +71,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Technical
 - Added magic number constants for beacon radii
 - Improved code documentation
-- Build size: 367KB → 368KB
 
 ---
 

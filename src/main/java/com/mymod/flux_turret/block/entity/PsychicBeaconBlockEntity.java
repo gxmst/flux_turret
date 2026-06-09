@@ -608,14 +608,16 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         AABB clearArea = new AABB(pos).inflate(SPAWN_CLEANUP_RADIUS);
         List<Monster> monsters = level.getEntitiesOfClass(Monster.class, clearArea);
         for (Monster monster : monsters) {
-            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster)) {
+            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster, pos)) {
                 monster.discard();
             }
         }
     }
 
-    private static boolean hasMoveToBeaconGoal(Monster monster) {
-        return monster.goalSelector.getAvailableGoals().stream().anyMatch(g -> g.getGoal() instanceof MoveToBeaconGoal);
+    private static boolean hasMoveToBeaconGoal(Monster monster, BlockPos beaconPos) {
+        return monster.goalSelector.getAvailableGoals().stream()
+                .anyMatch(g -> g.getGoal() instanceof MoveToBeaconGoal goal
+                        && goal.getTargetPos().equals(beaconPos));
     }
 
     @Nullable
@@ -699,7 +701,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         AABB clearArea = new AABB(pos).inflate(SPAWN_CLEANUP_RADIUS);
         List<Monster> monsters = level.getEntitiesOfClass(Monster.class, clearArea);
         for (Monster monster : monsters) {
-            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster)) {
+            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster, pos)) {
                 monster.discard();
             }
         }

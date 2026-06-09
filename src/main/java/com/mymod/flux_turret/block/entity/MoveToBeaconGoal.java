@@ -22,6 +22,10 @@ public class MoveToBeaconGoal extends Goal {
         this.setFlags(EnumSet.of(Flag.MOVE));
     }
 
+    public BlockPos getTargetPos() {
+        return targetPos;
+    }
+
     @Override
     public boolean canUse() {
         if (mob == null || !mob.isAlive()) return false;

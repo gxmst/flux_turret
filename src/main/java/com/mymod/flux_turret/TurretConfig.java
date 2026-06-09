@@ -41,7 +41,6 @@ public class TurretConfig {
 
     // Psychic Beacon
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_CAPACITY;
-    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_BATTLE_DURATION;
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_SPAWN_INTERVAL;
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_MAX_MONSTERS;
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_STABILITY;
@@ -98,7 +97,6 @@ public class TurretConfig {
 
         builder.comment("Psychic Beacon Settings").push("psychic_beacon");
         PSYCHIC_BEACON_CAPACITY = builder.comment("Energy capacity (also the activation cost)").defineInRange("capacity", 50000, 10000, 1000000);
-        PSYCHIC_BEACON_BATTLE_DURATION = builder.comment("Battle duration in ticks").defineInRange("battleDuration", 1200, 200, 6000);
         PSYCHIC_BEACON_SPAWN_INTERVAL = builder.comment("Ticks between elite monster spawn waves").defineInRange("spawnInterval", 180, 40, 600);
         PSYCHIC_BEACON_MAX_MONSTERS = builder.comment("Max elite monsters alive near the beacon").defineInRange("maxMonsters", 12, 5, 60);
         PSYCHIC_BEACON_STABILITY = builder.comment("Initial stability value").defineInRange("stability", 100, 20, 500);
