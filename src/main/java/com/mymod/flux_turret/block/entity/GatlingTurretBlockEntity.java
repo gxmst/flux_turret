@@ -5,7 +5,6 @@ import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -15,7 +14,7 @@ import net.minecraft.world.phys.Vec3;
 public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     private static final int MAX_RECEIVE = 800;
     private static final int MIN_FIRE_INTERVAL = 2;
-    private static final int MAX_FIRE_INTERVAL = 30;
+    private static final int MAX_FIRE_INTERVAL = 14;
     private static final int MAX_SPIN = 200;
     private static final int MIN_SPIN_TO_FIRE = 30;
     private static final int TARGET_CACHE_INTERVAL = 10;
@@ -85,7 +84,6 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
         int prevTargetId = be.targetId;
         int prevSpinUp = be.spinUp;
         boolean prevFiring = be.isFiring;
-        long prevFireTime = be.lastFireTime;
         boolean prevHasEnergy = be.visualHasEnergy;
 
         if (be.isRedstoneBlocked(level, pos)) {
@@ -95,8 +93,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
             be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.GATLING_FIRE_COST.get();
             if (be.targetId != prevTargetId || be.spinUp != prevSpinUp || be.isFiring != prevFiring
                     || be.visualHasEnergy != prevHasEnergy) {
-                be.setChanged();
-                level.sendBlockUpdated(pos, state, state, 3);
+                be.markUpdated();
             }
             return;
         }
@@ -152,22 +149,24 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
                 be.isFiring = true;
                 be.lastFireTime = level.getGameTime();
                 be.attackCooldown = interval;
+                be.sendFirePacket();
             } else {
                 be.isFiring = false;
             }
         }
 
         if (be.targetId != prevTargetId || be.spinUp != prevSpinUp || be.isFiring != prevFiring
-                || be.lastFireTime != prevFireTime || be.visualHasEnergy != prevHasEnergy) {
-            be.setChanged();
-            level.sendBlockUpdated(pos, state, state, 3);
+                || be.visualHasEnergy != prevHasEnergy) {
+            be.markUpdated();
         }
     }
 
     private static int getFireInterval(int spinUp) {
+        // Linear ramp from MAX_FIRE_INTERVAL (slow) down to MIN_FIRE_INTERVAL (fast)
+        // so the rate-up reads as a smooth, continuous acceleration rather than a
+        // last-moment jump (the old t*t curve kept it slow for most of the spin).
         float t = Math.max(0, Math.min(MAX_SPIN, spinUp)) / (float) MAX_SPIN;
-        float curved = t * t;
-        return Math.max(MIN_FIRE_INTERVAL, Math.round(MAX_FIRE_INTERVAL + (MIN_FIRE_INTERVAL - MAX_FIRE_INTERVAL) * curved));
+        return Math.max(MIN_FIRE_INTERVAL, Math.round(MAX_FIRE_INTERVAL + (MIN_FIRE_INTERVAL - MAX_FIRE_INTERVAL) * t));
     }
 
     public int getSpinUp() {

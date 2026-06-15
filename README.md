@@ -11,7 +11,7 @@
 ![Minecraft 1.20.1](https://img.shields.io/badge/Minecraft-1.20.1-brightgreen.svg)
 ![Forge](https://img.shields.io/badge/Forge-47.4.10-orange.svg)
 ![Java 17](https://img.shields.io/badge/Java-17-blue.svg)
-![Version](https://img.shields.io/badge/Version-1.3-blue.svg)
+![Version](https://img.shields.io/badge/Version-1.4-blue.svg)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-green.svg)
 
 **Flux Turret** is a Forge Energy-powered automated defense mod for Minecraft 1.20.1, inspired by the iconic defense structures from *Command & Conquer: Red Alert 2*. Build your fortress with intelligent turrets and a psychic beacon system!
@@ -33,7 +33,7 @@
 |--------|------|------:|-------:|-------:|---------|
 | **Prism Tower** | Beam Weapon | 16.5-24 | 10 × (1 + supports × 0.35) | 1000 FE | Network support bonus |
 | **Tesla Coil** | Electric Arc | 18.5 | 12 | 1400 FE | Overcharge mode available |
-| **Gatling Turret** | Rapid Fire | 11 | 0.5/shot | 30 FE/shot | Spin-up acceleration |
+| **Gatling Turret** | Rapid Fire | 11 | 2/shot | 30 FE/shot | Spin-up acceleration |
 | **Grand Cannon** | Artillery | 64 | 50 (AoE) | 8000 FE | Ignores line of sight |
 
 ### 🧠 Psychic Beacon System
@@ -64,12 +64,19 @@ Portable FE storage block (100,000 FE capacity):
 1. Download from [Releases](../../releases)
 2. Install [Forge 47.4.10](https://files.minecraftforge.net/) for Minecraft 1.20.1
 3. Install [GeckoLib 4.8.3](https://www.curseforge.com/minecraft/mc-mods/geckolib)
-4. Place `flux_turret-1.3.jar` in your `mods` folder
+4. Place `flux_turret-1.4.jar` in your `mods` folder
 5. Launch the game and start building!
 
 ### 🎨 Visual Effects
 
-**New in v1.3:**
+**New in v1.4:**
+- 🎨 Refined block textures with panel seams, rivets, warning stripes, and cleaner glow masks
+- 🔥 Lightweight turret fire packets for smoother client-side firing visuals
+- 🌀 Improved Gatling spin-up cadence and barrel animation
+- 🧲 Optimized Psychic Beacon active-beacon lookups for sleep/death detection
+- 🛡️ Safer comparator output handling for energy blocks
+
+**Added in v1.3:**
 - ⚡ Electric arcs with zigzag lightning effect (Tesla Coil)
 - 🌈 Rainbow beam with intensity scaling (Prism Tower)
 - 💨 Muzzle flash, smoke, and shell casings (Gatling)
@@ -128,7 +135,7 @@ gxmst
 |------|------|-----:|-----:|-----:|------|
 | **光棱塔** | 光束武器 | 16.5-24 | 10 × (1 + 支援数 × 0.35) | 1000 FE | 网络支援加成 |
 | **特斯拉线圈** | 电弧攻击 | 18.5 | 12 | 1400 FE | 可过载模式 |
-| **加特林炮塔** | 快速射击 | 11 | 0.5/发 | 30 FE/发 | 转速加速 |
+| **加特林炮塔** | 快速射击 | 11 | 2/发 | 30 FE/发 | 转速加速 |
 | **巨炮** | 火炮轰炸 | 64 | 50 (范围) | 8000 FE | 无视遮挡 |
 
 ### 🧠 心灵信标系统
@@ -159,10 +166,17 @@ gxmst
 1. 从 [Releases](../../releases) 下载
 2. 安装 [Forge 47.4.10](https://files.minecraftforge.net/) for Minecraft 1.20.1
 3. 安装 [GeckoLib 4.8.3](https://www.curseforge.com/minecraft/mc-mods/geckolib)
-4. 将 `flux_turret-1.3.jar` 放入 `mods` 文件夹
+4. 将 `flux_turret-1.4.jar` 放入 `mods` 文件夹
 5. 启动游戏开始建造！
 
 ### 🎨 视觉效果
+
+**v1.4 新增：**
+- 🎨 方块贴图精修：面板分缝、铆钉、警示条与更干净的发光遮罩
+- 🔥 新增轻量开火网络包，让客户端射击视觉更顺滑
+- 🌀 优化加特林转速节奏和枪管动画
+- 🧲 优化心灵信标活跃列表，用于睡眠阻止和击杀检测
+- 🛡️ 能量方块红石比较器输出更安全
 
 **v1.3 新增：**
 - ⚡ 锯齿状闪电电弧效果（特斯拉线圈）
@@ -210,10 +224,11 @@ gxmst
 #### Prism Tower / 光棱塔
 ```
  D
- I
+AEA
 III
 ```
-D = Diamond / 钻石 | I = Iron Block / 铁块
+D = Diamond / 钻石 | A = Amethyst Shard / 紫水晶碎片
+E = Empty Crystal / 空晶体 | I = Iron Block / 铁块
 
 #### Tesla Coil / 特斯拉线圈
 ```

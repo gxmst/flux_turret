@@ -128,10 +128,12 @@ public class GrandCannonBlock extends BaseEntityBlock {
 
         BlockEntity be = level.getBlockEntity(corePos);
         if (be instanceof GrandCannonBlockEntity cannon) {
+            net.minecraft.network.chat.Component formed = net.minecraft.network.chat.Component.translatable(
+                    cannon.isFormed() ? "message.flux_turret.formed_yes" : "message.flux_turret.formed_no");
             player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal(
-                            "Energy: " + cannon.getEnergyStored() + " / " + cannon.getEnergyCapacity()
-                                    + " | Formed: " + cannon.isFormed()),
+                    net.minecraft.network.chat.Component.translatable(
+                            "message.flux_turret.cannon_status",
+                            cannon.getEnergyStored(), cannon.getEnergyCapacity(), formed),
                     true);
             return InteractionResult.CONSUME;
         }

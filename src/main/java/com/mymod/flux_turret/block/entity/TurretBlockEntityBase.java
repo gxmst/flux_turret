@@ -278,8 +278,52 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         return lastFireTime;
     }
 
+    /**
+     * Client-side: invoked by {@link com.mymod.flux_turret.network.TurretFirePacket}
+     * once per shot to drive the firing beam window and animation countdown
+     * without a full block-entity resync. The target is taken from the packet
+     * (server-authoritative at fire time), not the local mirror, so visuals stay
+     * correct even if the fire packet arrives before the next block-entity sync.
+     */
+    public void onClientFire(long gameTime, int firedTargetId, int firedTargetType, @Nullable BlockPos firedTargetPos) {
+        lastFireTime = gameTime;
+        visualCountdown = getFiringVisualCountdown();
+        visualTargetId = firedTargetId;
+    }
+
+    /** Target type to ship in the fire packet (0 = simple entity target). Overridden by relay turrets. */
+    protected int getFireTargetType() {
+        return 0;
+    }
+
+    /** Target position to ship in the fire packet (null for simple entity targets). Overridden by relay turrets. */
+    @Nullable
+    protected BlockPos getFireTargetPos() {
+        return null;
+    }
+
+    /** Server-side: notify tracking clients that a shot was fired this tick. */
+    protected void sendFirePacket() {
+        if (level == null || level.isClientSide || !(level instanceof net.minecraft.server.level.ServerLevel serverLevel)) {
+            return;
+        }
+        net.minecraft.world.level.chunk.LevelChunk chunk = serverLevel.getChunkAt(worldPosition);
+        com.mymod.flux_turret.network.ModNetworking.CHANNEL.send(
+                net.minecraftforge.network.PacketDistributor.TRACKING_CHUNK.with(() -> chunk),
+                new com.mymod.flux_turret.network.TurretFirePacket(
+                        worldPosition, targetId, getFireTargetType(), getFireTargetPos()));
+    }
+
     public int getTargetId() {
         return targetId;
+    }
+
+    /** Mark dirty and push a block-entity sync to tracking clients. */
+    protected void markUpdated() {
+        setChanged();
+        if (level != null) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
     }
 
     public boolean isVisuallyPowered() {

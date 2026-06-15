@@ -33,5 +33,10 @@
     "message.flux_turret.beacon_energy_low": "[WARNING] Insufficient psychic energy %d FE! Chest synthesis failed!",
     "message.flux_turret.beacon_no_chest_space": "[WARNING] Cannot find suitable location to place supply crate!",
     "message.flux_turret.beacon_defense_success": "[Psychic Radar] Today's defense mission successful! Supply crate has been synthesized and deployed!",
-    "message.flux_turret.charge_success": "Charged: +%d FE (Energy: %d / %d FE)"
+    "message.flux_turret.charge_success": "Charged: +%d FE (Energy: %d / %d FE)",
+    "message.flux_turret.cannon_status": "Energy: %d / %d FE | Formed: %s",
+    "message.flux_turret.formed_yes": "Yes",
+    "message.flux_turret.formed_no": "No",
+    "message.flux_turret.crystal_status": "Energy: %d / %d FE",
+    "message.flux_turret.beacon_no_space": "Not enough space above to place the Psychic Beacon! Requires 2 blocks of height."
 }

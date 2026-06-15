@@ -33,5 +33,10 @@
     "message.flux_turret.beacon_energy_low": "[警告] 心灵能量不足 %d FE！宝箱合成失败！",
     "message.flux_turret.beacon_no_chest_space": "[警告] 找不到合适的位置放置补给箱！",
     "message.flux_turret.beacon_defense_success": "[心灵雷达] 今日防区战役防卫成功！补给箱已合成降下！",
-    "message.flux_turret.charge_success": "充能: +%d FE (能量: %d / %d FE)"
+    "message.flux_turret.charge_success": "充能: +%d FE (能量: %d / %d FE)",
+    "message.flux_turret.cannon_status": "能量: %d / %d FE | 已成型: %s",
+    "message.flux_turret.formed_yes": "是",
+    "message.flux_turret.formed_no": "否",
+    "message.flux_turret.crystal_status": "能量: %d / %d FE",
+    "message.flux_turret.beacon_no_space": "上方空间不足，无法放置心灵信标！需要2格高的空间。"
 }

@@ -6,6 +6,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
@@ -17,16 +18,22 @@ import org.jetbrains.annotations.Nullable;
 
 public abstract class TurretBlockBase extends BaseEntityBlock {
     private final RegistryObject<? extends BlockEntityType<?>> blockEntityTypeReg;
+    private final BlockEntityTicker<?> serverTicker;
     private final VoxelShape shape;
     private final int heightBlocks;
 
-    protected TurretBlockBase(Properties properties, RegistryObject<? extends BlockEntityType<?>> blockEntityTypeReg) {
-        this(properties, blockEntityTypeReg, 1);
+    protected <E extends BlockEntity> TurretBlockBase(Properties properties,
+            RegistryObject<? extends BlockEntityType<?>> blockEntityTypeReg,
+            BlockEntityTicker<E> serverTicker) {
+        this(properties, blockEntityTypeReg, 1, serverTicker);
     }
 
-    protected TurretBlockBase(Properties properties, RegistryObject<? extends BlockEntityType<?>> blockEntityTypeReg, int heightBlocks) {
+    protected <E extends BlockEntity> TurretBlockBase(Properties properties,
+            RegistryObject<? extends BlockEntityType<?>> blockEntityTypeReg,
+            int heightBlocks, BlockEntityTicker<E> serverTicker) {
         super(properties);
         this.blockEntityTypeReg = blockEntityTypeReg;
+        this.serverTicker = serverTicker;
         this.heightBlocks = heightBlocks;
         this.shape = net.minecraft.world.level.block.Block.box(0, 0, 0, 16, heightBlocks * 16, 16);
         this.registerDefaultState(this.defaultBlockState().setValue(BlockStateProperties.POWERED, false));
@@ -79,5 +86,15 @@ public abstract class TurretBlockBase extends BaseEntityBlock {
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return blockEntityTypeReg.get().create(pos, state);
+    }
+
+    @Nullable
+    @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state,
+            BlockEntityType<T> type) {
+        if (serverTicker == null) return null;
+        return createTickerHelper(type, (BlockEntityType) blockEntityTypeReg.get(),
+                (BlockEntityTicker) serverTicker);
     }
 }

@@ -21,5 +21,10 @@
     "tooltip.flux_turret.grand_cannon": "わぁ！超スーパー特大の雪玉発射装置ね！世界の果てまで届いちゃう！ドカンと大爆発だけど、地形は壊さないエコ仕様よ！あたいの最強傑作ね！",
     "tooltip.flux_turret.energy_crystal": "キラキラのエネルギーストーン！タレットの隣に置けば自動で給電！燃えてるかまどの上に置いても充電できるよ！",
     "tooltip.flux_turret.empty_crystal": "どんよりした空のクリスタル……かまどで焼けばキラキラのエネルギークリスタルになるよ！",
-    "flux_turret.config.title": "gxFlux 設定"
+    "flux_turret.config.title": "gxFlux 設定",
+    "message.flux_turret.cannon_status": "エネルギー: %d / %d FE | 形成済み: %s",
+    "message.flux_turret.formed_yes": "はい",
+    "message.flux_turret.formed_no": "いいえ",
+    "message.flux_turret.crystal_status": "エネルギー: %d / %d FE",
+    "message.flux_turret.beacon_no_space": "上方のスペースが足りず、サイキックビーコンを設置できません！高さ2マスの空間が必要です。"
 }

@@ -54,7 +54,8 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
         if (!level.getBlockState(pos.above()).isAir() && !level.getBlockState(pos.above()).canBeReplaced()) {
             Player player = context.getPlayer();
             if (player != null) {
-                player.displayClientMessage(Component.literal("\u00a7c\u4e0a\u65b9\u7a7a\u95f4\u4e0d\u8db3\uff0c\u65e0\u6cd5\u653e\u7f6e\u5fc3\u7075\u4fe1\u6807\uff01\u9700\u89812\u683c\u9ad8\u7684\u7a7a\u95f4\u3002"), true);
+                player.displayClientMessage(Component.translatable("message.flux_turret.beacon_no_space")
+                        .withStyle(net.minecraft.ChatFormatting.RED), true);
             }
             return null;
         }
@@ -108,9 +109,9 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
     @Override
     public int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
         if (level.getBlockEntity(pos) instanceof PsychicBeaconBlockEntity beacon) {
-            int stored = beacon.getEnergyStorage().getEnergyStored();
-            int max = beacon.getEnergyStorage().getMaxEnergyStored();
-            return (int) ((double) stored / max * 15);
+            return ChargeHelper.energySignal(
+                    beacon.getEnergyStorage().getEnergyStored(),
+                    beacon.getEnergyStorage().getMaxEnergyStored());
         }
         return 0;
     }

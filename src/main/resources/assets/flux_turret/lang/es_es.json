@@ -21,5 +21,10 @@
     "tooltip.flux_turret.grand_cannon": "EL ABSOLUTO MEGACANON. Lanza proyectiles gigantescos desde otra zona horaria. Gran bum-bum, pero super ecologico (no destruye el terreno). Una unidad absoluta.",
     "tooltip.flux_turret.energy_crystal": "Una piedra de energia brillante! Ponla junto a las torretas para alimentarlas. Tambien se puede recargar colocandola sobre un horno encendido!",
     "tooltip.flux_turret.empty_crystal": "Un cristal apagado y sin vida... Metelo en un horno para convertirlo en un Cristal de Energia completamente cargado!",
-    "flux_turret.config.title": "Configuracion de gxFlux"
+    "flux_turret.config.title": "Configuracion de gxFlux",
+    "message.flux_turret.cannon_status": "Energia: %d / %d FE | Formado: %s",
+    "message.flux_turret.formed_yes": "Si",
+    "message.flux_turret.formed_no": "No",
+    "message.flux_turret.crystal_status": "Energia: %d / %d FE",
+    "message.flux_turret.beacon_no_space": "No hay suficiente espacio arriba para colocar el Faro Psiquico! Requiere 2 bloques de altura."
 }

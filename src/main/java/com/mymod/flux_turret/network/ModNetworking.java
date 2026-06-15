@@ -19,5 +19,9 @@ public class ModNetworking {
                 ToggleBeaconPacket::encode,
                 ToggleBeaconPacket::decode,
                 ToggleBeaconPacket::handle);
+        CHANNEL.registerMessage(1, TurretFirePacket.class,
+                TurretFirePacket::encode,
+                TurretFirePacket::decode,
+                TurretFirePacket::handle);
     }
 }

@@ -2,12 +2,18 @@
     "type": "minecraft:crafting_shaped",
     "pattern": [
         " D ",
-        " I ",
+        "AEA",
         "III"
     ],
     "key": {
         "D": {
             "item": "minecraft:diamond"
+        },
+        "A": {
+            "item": "minecraft:amethyst_shard"
+        },
+        "E": {
+            "item": "flux_turret:empty_crystal"
         },
         "I": {
             "item": "minecraft:iron_block"

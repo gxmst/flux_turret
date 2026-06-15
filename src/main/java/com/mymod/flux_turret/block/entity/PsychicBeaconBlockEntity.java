@@ -90,6 +90,45 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private int[] cachedTurretCounts = new int[3];
     private int turretScanCooldown = 0;
 
+    /**
+     * Server-side registry of currently-active beacons, maintained each tick.
+     * Lets mob-death / sleep lookups avoid scanning every block entity in a
+     * large chunk radius. Server thread only.
+     */
+    private static final java.util.Set<PsychicBeaconBlockEntity> ACTIVE_BEACONS =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+    /** Find an active beacon within {@code range} (Manhattan) of {@code pos} in the given level. */
+    @Nullable
+    public static PsychicBeaconBlockEntity findNearbyActiveBeacon(Level level, BlockPos pos, int range) {
+        PsychicBeaconBlockEntity found = null;
+        java.util.Iterator<PsychicBeaconBlockEntity> it = ACTIVE_BEACONS.iterator();
+        while (it.hasNext()) {
+            PsychicBeaconBlockEntity beacon = it.next();
+            // Prune stale entries opportunistically (unloaded / removed / wrong level).
+            if (beacon.isRemoved() || beacon.level == null || beacon.beaconState != STATE_ACTIVE) {
+                it.remove();
+                continue;
+            }
+            if (found == null && beacon.level == level
+                    && beacon.worldPosition.distManhattan(pos) <= range) {
+                found = beacon;
+            }
+        }
+        return found;
+    }
+
+    /** Drop all tracked beacons. Hooked to server stop so the static set never outlives a world. */
+    public static void clearActiveBeacons() {
+        ACTIVE_BEACONS.clear();
+    }
+
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        ACTIVE_BEACONS.remove(this);
+    }
+
     private final EnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyCap;
 
@@ -154,26 +193,6 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return cachedTurretCounts;
     }
 
-    public int countNearbyTurrets(Class<? extends BlockEntity> type) {
-        if (level == null) return 0;
-        int count = 0;
-        int cx = worldPosition.getX() >> 4;
-        int cz = worldPosition.getZ() >> 4;
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                if (level.hasChunk(cx + dx, cz + dz)) {
-                    net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunk(cx + dx, cz + dz);
-                    for (BlockEntity be : chunk.getBlockEntities().values()) {
-                        if (type.isInstance(be) && be.getBlockPos().distManhattan(worldPosition) <= 32) {
-                            count++;
-                        }
-                    }
-                }
-            }
-        }
-        return count;
-    }
-
     private void refreshNearbyTurretCounts() {
         if (level == null) return;
 
@@ -210,7 +229,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     public long getTimeUntilDawn() {
         if (level == null) return 0;
         long dayTime = level.getDayTime() % 24000;
-        if (dayTime < 6000) {
+        if (dayTime <= 6000) {
             return 6000 - dayTime;
         } else {
             return 24000 - dayTime + 6000;
@@ -250,6 +269,12 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         tickDawnSynthesis(level, pos, be);
+
+        if (be.beaconState == STATE_ACTIVE) {
+            ACTIVE_BEACONS.add(be);
+        } else {
+            ACTIVE_BEACONS.remove(be);
+        }
 
         be.turretScanCooldown--;
         if (be.turretScanCooldown <= 0) {

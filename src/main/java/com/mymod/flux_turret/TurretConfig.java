@@ -58,7 +58,7 @@ public class TurretConfig {
 
         builder.comment("Gatling Turret Settings").push("gatling");
         GATLING_RANGE = builder.comment("Target detection range").defineInRange("range", 11.0, 1.0, 64.0);
-        GATLING_DAMAGE = builder.comment("Damage per hit").defineInRange("damage", 0.5, 0.1, 100.0);
+        GATLING_DAMAGE = builder.comment("Damage per hit").defineInRange("damage", 2.0, 0.1, 100.0);
         GATLING_FIRE_COST = builder.comment("Energy cost per shot").defineInRange("fireCost", 30, 1, 10000);
         GATLING_CAPACITY = builder.comment("Energy capacity").defineInRange("capacity", 60000, 1000, 1000000);
         builder.pop();

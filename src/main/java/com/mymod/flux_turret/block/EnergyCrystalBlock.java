@@ -66,7 +66,9 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
             int stored = be.getEnergyStorage().getEnergyStored();
             int max = be.getEnergyStorage().getMaxEnergyStored();
             player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal(String.format("\u00a7b\u80fd\u91cf: %d / %d FE", stored, max)),
+                    net.minecraft.network.chat.Component.translatable(
+                            "message.flux_turret.crystal_status", stored, max)
+                        .withStyle(net.minecraft.ChatFormatting.AQUA),
                     true);
         }
         return InteractionResult.CONSUME;
@@ -99,9 +101,9 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
     @Override
     public int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
         if (level.getBlockEntity(pos) instanceof EnergyCrystalBlockEntity be) {
-            int stored = be.getEnergyStorage().getEnergyStored();
-            int max = be.getEnergyStorage().getMaxEnergyStored();
-            return (int) ((double) stored / max * 15);
+            return ChargeHelper.energySignal(
+                    be.getEnergyStorage().getEnergyStored(),
+                    be.getEnergyStorage().getMaxEnergyStored());
         }
         return 0;
     }

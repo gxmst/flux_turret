@@ -3,14 +3,12 @@ package com.mymod.flux_turret.block.entity;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.util.TurretVisualEffects;
-import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -98,10 +96,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             }
         }
 
-        this.setChanged();
-        if (this.level != null) {
-            this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
-        }
+        markUpdated();
     }
 
     public boolean isOvercharged() {
@@ -128,7 +123,6 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
 
         int prevTargetId = be.targetId;
         boolean prevFiring = be.isFiring;
-        long prevFireTime = be.lastFireTime;
         boolean prevHasEnergy = be.visualHasEnergy;
 
         if (be.isRedstoneBlocked(level, pos)) {
@@ -137,8 +131,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             be.warmupTicks = 0;
             be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.TESLA_FIRE_COST.get();
             if (be.targetId != prevTargetId || be.isFiring != prevFiring || be.visualHasEnergy != prevHasEnergy) {
-                be.setChanged();
-                level.sendBlockUpdated(pos, state, state, 3);
+                be.markUpdated();
             }
             return;
         }
@@ -190,6 +183,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                         be.lastFireTime = level.getGameTime();
                         be.attackCooldown = ATTACK_COOLDOWN;
                         be.warmupTicks = 0;
+                        be.sendFirePacket();
                     }
                 } else {
                     be.isFiring = false;
@@ -204,10 +198,9 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
 
         boolean nowOvercharged = be.overchargeTicks > 0;
         if (be.targetId != prevTargetId || be.isFiring != prevFiring
-                || be.lastFireTime != prevFireTime || be.visualHasEnergy != prevHasEnergy
+                || be.visualHasEnergy != prevHasEnergy
                 || prevOvercharged != nowOvercharged) {
-            be.setChanged();
-            level.sendBlockUpdated(pos, state, state, 3);
+            be.markUpdated();
         }
     }
 

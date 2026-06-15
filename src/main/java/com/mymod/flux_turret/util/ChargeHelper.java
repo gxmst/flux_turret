@@ -15,6 +15,16 @@ import net.minecraftforge.energy.EnergyStorage;
 public class ChargeHelper {
     private ChargeHelper() {}
 
+    /**
+     * Compute a comparator output signal (0-15) from an energy fill ratio.
+     * Guards against zero/negative capacity and clamps to the valid range.
+     */
+    public static int energySignal(int stored, int capacity) {
+        if (capacity <= 0 || stored <= 0) return 0;
+        int signal = (int) ((double) stored / capacity * 15.0);
+        return Math.max(0, Math.min(15, signal));
+    }
+
     public static InteractionResult tryRedstoneCharge(
             Level level, BlockPos pos, BlockState state,
             Player player, ItemStack heldItem,

@@ -15,7 +15,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -84,7 +83,11 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected int getFiringVisualCountdown() {
-        return 6;
+        // Prism's active clip is a steady-state spin (no transient to truncate), so
+        // this isn't the grand-cannon snap-back bug. 12 ticks keeps a master tower
+        // (fires ~every 20t) reading as "engaged" between shots instead of flickering
+        // active<->idle each shot; slave relays refresh it every 2t regardless.
+        return 12;
     }
 
     @Override
@@ -140,7 +143,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         }
         visualSupportCount = cachedSupportCount;
         if (isFiring && targetType != 0) {
-            visualCountdown = 6;
+            visualCountdown = getFiringVisualCountdown();
             if (targetType == 1 && targetId != -1 && level != null) {
                 Entity target = level.getEntity(targetId);
                 if (target != null)
@@ -220,46 +223,37 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         return supportCount;
     }
 
-    private int computeSupportTree(BlockPos masterBlockPos) {
-        Set<BlockPos> visited = new HashSet<>();
-        Queue<SupportNode> queue = new ArrayDeque<>();
-        int supportCount = 0;
-
-        for (PrismTowerBlockEntity neighbor : neighborCache) {
-            if (neighbor == this) continue;
-            BlockPos np = neighbor.getBlockPos();
-            if (visited.contains(np)) continue;
-            if (neighbor.currentDepth < 0) continue;
-            if (neighbor.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) continue;
-            if (neighbor.masterPos == null || !neighbor.masterPos.equals(masterBlockPos)) continue;
-            if (!withinRange(np, masterBlockPos, NEIGHBOR_SCAN_RANGE)) continue;
-            visited.add(np);
-            queue.add(new SupportNode(np, 1));
-            supportCount++;
-        }
-
-        while (!queue.isEmpty() && supportCount < SUPPORT_SCAN_CAP) {
-            SupportNode node = queue.poll();
-            if (node.depth >= MAX_DEPTH) continue;
-            BlockEntity be = level.getBlockEntity(node.pos);
-            if (!(be instanceof PrismTowerBlockEntity currentTE)) continue;
-
-            for (PrismTowerBlockEntity nn : currentTE.neighborCache) {
-                BlockPos nnPos = nn.getBlockPos();
-                if (visited.contains(nnPos)) continue;
-                if (nn.currentDepth < 0) continue;
-                if (nn.getEnergyStorage().getEnergyStored() < TurretConfig.PRISM_SLAVE_FIRE_COST.get()) continue;
-                if (nn.masterPos == null || !nn.masterPos.equals(masterBlockPos)) continue;
-                if (!withinRange(nnPos, node.pos, NEIGHBOR_SCAN_RANGE)) continue;
-                visited.add(nnPos);
-                queue.add(new SupportNode(nnPos, node.depth + 1));
-                supportCount++;
-            }
-        }
-        return supportCount;
+    private record SupportNode(BlockPos pos, int depth) {
     }
 
-    private record SupportNode(BlockPos pos, int depth) {
+    @Override
+    protected int getFireTargetType() {
+        return targetType;
+    }
+
+    @Override
+    protected BlockPos getFireTargetPos() {
+        return targetPos;
+    }
+
+    @Override
+    public void onClientFire(long gameTime, int firedTargetId, int firedTargetType, BlockPos firedTargetPos) {
+        lastFireTime = gameTime;
+        visualCountdown = getFiringVisualCountdown();
+        visualTargetType = firedTargetType;
+        visualTargetId = firedTargetId;
+        visualTargetPos = firedTargetPos;
+        // Refresh the resolved beam endpoint immediately so the first frame after
+        // firing aims at the correct target rather than a stale cached position.
+        visualCachedTargetPos = null;
+        if (firedTargetType == 1 && firedTargetId != -1 && level != null) {
+            Entity target = level.getEntity(firedTargetId);
+            if (target != null) {
+                visualCachedTargetPos = target.getEyePosition(0.0f);
+            }
+        } else if (firedTargetType == 2 && firedTargetPos != null) {
+            visualCachedTargetPos = Vec3.atLowerCornerOf(firedTargetPos).add(0.5, 3.125, 0.5);
+        }
     }
 
     private static boolean withinRange(BlockPos a, BlockPos b, int range) {
@@ -318,7 +312,6 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         BlockPos prevTargetPos = be.targetPos;
         BlockPos prevMasterPos = be.masterPos;
         boolean prevFiring = be.isFiring;
-        long prevFireTime = be.lastFireTime;
         int prevSupportCount = be.cachedSupportCount;
         boolean prevHasEnergy = be.visualHasEnergy;
 
@@ -329,8 +322,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                     || !java.util.Objects.equals(be.targetPos, prevTargetPos)
                     || !java.util.Objects.equals(be.masterPos, prevMasterPos)
                     || be.isFiring != prevFiring || be.visualHasEnergy != prevHasEnergy) {
-                be.setChanged();
-                level.sendBlockUpdated(pos, state, state, 3);
+                be.markUpdated();
             }
             return;
         }
@@ -393,6 +385,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                             be.lastFireTime = level.getGameTime();
                             be.attackCooldown = MASTER_COOLDOWN;
                             be.warmupTicks = 0;
+                            be.sendFirePacket();
                         }
                     } else {
                         be.isFiring = false;
@@ -428,6 +421,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                                 be.isFiring = true;
                                 be.lastFireTime = level.getGameTime();
                                 be.attackCooldown = SLAVE_COOLDOWN;
+                                be.sendFirePacket();
                             }
                         }
                     } else {
@@ -445,11 +439,9 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                 || !java.util.Objects.equals(be.targetPos, prevTargetPos)
                 || !java.util.Objects.equals(be.masterPos, prevMasterPos)
                 || be.isFiring != prevFiring
-                || be.lastFireTime != prevFireTime
                 || be.cachedSupportCount != prevSupportCount
                 || be.visualHasEnergy != prevHasEnergy) {
-            be.setChanged();
-            level.sendBlockUpdated(pos, state, state, 3);
+            be.markUpdated();
         }
     }
 

@@ -12,22 +12,12 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.BlockEntityTicker;
-import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
-import org.jetbrains.annotations.Nullable;
 
 public class TeslaCoilBlock extends TurretBlockBase {
     public TeslaCoilBlock(Properties properties) {
-        super(properties, ModRegistry.TESLA_COIL_BE, 3);
-    }
-
-    @Nullable
-    @Override
-    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state,
-            BlockEntityType<T> type) {
-        return createTickerHelper(type, ModRegistry.TESLA_COIL_BE.get(), TeslaCoilBlockEntity::tick);
+        super(properties, ModRegistry.TESLA_COIL_BE, 3, TeslaCoilBlockEntity::tick);
     }
 
     @Override

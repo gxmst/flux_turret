@@ -15,7 +15,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
@@ -27,6 +26,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
     private int warmupTicks = 0;
     private boolean formed = false;
+    private int structureCheckCounter = 0;
 
     public GrandCannonBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.GRAND_CANNON_BE.get(), pos, state,
@@ -105,7 +105,10 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
     @Override
     protected int getFiringVisualCountdown() {
-        return 15;
+        // Must cover the full 2.0s (40-tick) recoil clip; otherwise the controller
+        // reverts to idle mid-recoil and the gun/barrels snap back to rest, so the
+        // kick is barely visible. 40 ticks = one complete recoil, then clean idle.
+        return 40;
     }
 
     @Override
@@ -155,15 +158,14 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         }
 
         // Periodically validate structure integrity
-        be.tickCounter++;
-        if (be.tickCounter % STRUCTURE_CHECK_INTERVAL == 0 || !be.formed) {
+        be.structureCheckCounter++;
+        if (be.structureCheckCounter % STRUCTURE_CHECK_INTERVAL == 0 || !be.formed) {
             Direction facing = state.hasProperty(GrandCannonBlock.FACING)
                     ? state.getValue(GrandCannonBlock.FACING) : Direction.NORTH;
             boolean wasFormed = be.formed;
             be.formed = be.checkStructureComplete(level, pos, facing);
             if (be.formed != wasFormed) {
-                be.setChanged();
-                level.sendBlockUpdated(pos, state, state, 3);
+                be.markUpdated();
             }
         }
 
@@ -173,7 +175,6 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
         int prevTargetId = be.targetId;
         boolean prevFiring = be.isFiring;
-        long prevFireTime = be.lastFireTime;
         boolean prevHasEnergy = be.visualHasEnergy;
 
         Direction signalFacing = state.hasProperty(GrandCannonBlock.FACING)
@@ -184,8 +185,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             be.warmupTicks = 0;
             be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.GRAND_CANNON_FIRE_COST.get();
             if (be.targetId != prevTargetId || be.isFiring != prevFiring || be.visualHasEnergy != prevHasEnergy) {
-                be.setChanged();
-                level.sendBlockUpdated(pos, state, state, 3);
+                be.markUpdated();
             }
             return;
         }
@@ -214,6 +214,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
                         be.lastFireTime = level.getGameTime();
                         be.attackCooldown = TurretConfig.GRAND_CANNON_COOLDOWN.get();
                         be.warmupTicks = 0;
+                        be.sendFirePacket();
                     }
                 } else {
                     be.isFiring = false;
@@ -224,9 +225,8 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         }
 
         if (be.targetId != prevTargetId || be.isFiring != prevFiring
-                || be.lastFireTime != prevFireTime || be.visualHasEnergy != prevHasEnergy) {
-            be.setChanged();
-            level.sendBlockUpdated(pos, state, state, 3);
+                || be.visualHasEnergy != prevHasEnergy) {
+            be.markUpdated();
         }
     }
 
