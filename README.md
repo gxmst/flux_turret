@@ -11,7 +11,7 @@
 ![Minecraft 1.20.1](https://img.shields.io/badge/Minecraft-1.20.1-brightgreen.svg)
 ![Forge](https://img.shields.io/badge/Forge-47.4.10-orange.svg)
 ![Java 17](https://img.shields.io/badge/Java-17-blue.svg)
-![Version](https://img.shields.io/badge/Version-1.4-blue.svg)
+![Version](https://img.shields.io/badge/Version-1.5-blue.svg)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-green.svg)
 
 **Flux Turret** is a Forge Energy-powered automated defense mod for Minecraft 1.20.1, inspired by the iconic defense structures from *Command & Conquer: Red Alert 2*. Build your fortress with intelligent turrets and a psychic beacon system!
@@ -64,12 +64,19 @@ Portable FE storage block (100,000 FE capacity):
 1. Download from [Releases](../../releases)
 2. Install [Forge 47.4.10](https://files.minecraftforge.net/) for Minecraft 1.20.1
 3. Install [GeckoLib 4.8.3](https://www.curseforge.com/minecraft/mc-mods/geckolib)
-4. Place `flux_turret-1.4.jar` in your `mods` folder
+4. Place `flux_turret-1.5.jar` in your `mods` folder
 5. Launch the game and start building!
 
 ### 🎨 Visual Effects
 
-**New in v1.4:**
+**New in v1.5:**
+- 🎨 Aggressive art overhaul branch with 2× block atlas resolution and 128px item icons
+- 🧩 GeckoLib UV atlases upgraded in sync with higher-resolution textures
+- 🛠️ Added extra model accent cubes for armor plates, muzzle parts, braces, rails, and energy cores
+- ✨ New glow masks for Gatling Turret and Energy Crystal, wired through glowing render layers
+- 🔬 Denser high-resolution surface detail: vents, scratches, secondary panel seams, circuit traces, and refined emissive areas
+
+**Added in v1.4:**
 - 🎨 Refined block textures with panel seams, rivets, warning stripes, and cleaner glow masks
 - 🔥 Lightweight turret fire packets for smoother client-side firing visuals
 - 🌀 Improved Gatling spin-up cadence and barrel animation
@@ -166,10 +173,17 @@ gxmst
 1. 从 [Releases](../../releases) 下载
 2. 安装 [Forge 47.4.10](https://files.minecraftforge.net/) for Minecraft 1.20.1
 3. 安装 [GeckoLib 4.8.3](https://www.curseforge.com/minecraft/mc-mods/geckolib)
-4. 将 `flux_turret-1.4.jar` 放入 `mods` 文件夹
+4. 将 `flux_turret-1.5.jar` 放入 `mods` 文件夹
 5. 启动游戏开始建造！
 
 ### 🎨 视觉效果
+
+**v1.5 新增：**
+- 🎨 激进美术重制分支：方块 atlas 分辨率提升 2 倍，物品图标统一到 128px
+- 🧩 GeckoLib UV atlas 与高分辨率贴图同步升级
+- 🛠️ 为模型追加装甲板、炮口件、支架、导轨和能量核心等细节 cube
+- ✨ 新增加特林炮塔与能量晶体 glowmask，并接入发光渲染层
+- 🔬 更密集的高分辨率表面细节：散热孔、划痕、二级面板线、电路纹和发光区域
 
 **v1.4 新增：**
 - 🎨 方块贴图精修：面板分缝、铆钉、警示条与更干净的发光遮罩

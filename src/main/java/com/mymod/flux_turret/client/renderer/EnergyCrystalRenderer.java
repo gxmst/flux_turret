@@ -7,12 +7,14 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
+import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 
 public class EnergyCrystalRenderer implements BlockEntityRenderer<EnergyCrystalBlockEntity> {
     private final GeoBlockRenderer<EnergyCrystalBlockEntity> geckoRenderer;
 
     public EnergyCrystalRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new EnergyCrystalModel());
+        this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
     }
 
     @Override
