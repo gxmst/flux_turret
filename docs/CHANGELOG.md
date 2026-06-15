@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [1.4] - 2026-06-16
 
 ### Fixed
+- Empty Crystal glowmask now contains faint dormant cracks instead of a fully transparent image, avoiding GeckoLib `AutoGlowingGeoLayer` crashes when rendering depleted Energy Crystal blocks.
 - Grand Cannon now drops a single item only when broken by a non-creative player.
 - Psychic Beacon monster cleanup now matches the specific beacon target before discarding spawned mobs.
 - Removed the unused `battleDuration` config entry from Psychic Beacon settings.
