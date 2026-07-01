@@ -15,7 +15,13 @@ public class EnergyCrystalModel extends GeoModel<EnergyCrystalBlockEntity> {
     @Override
     public ResourceLocation getTextureResource(EnergyCrystalBlockEntity animatable) {
         if (animatable.getEnergyStorage().getEnergyStored() <= 0) {
+            if (animatable.isEmpowered()) {
+                return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "textures/block/empowered_energy_crystal_empty.png");
+            }
             return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "textures/block/empty_crystal.png");
+        }
+        if (animatable.isEmpowered()) {
+            return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "textures/block/empowered_energy_crystal.png");
         }
         return ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "textures/block/energy_crystal.png");
     }

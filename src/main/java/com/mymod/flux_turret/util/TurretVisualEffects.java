@@ -134,42 +134,45 @@ public class TurretVisualEffects {
 
         RandomSource random = level.random;
 
-        // Muzzle flash
+        // Keep the gatling flash local to the muzzle. The vanilla FLASH particle
+        // blooms into a large disc, which reads as an explosion for rapid fire.
         ((ServerLevel) level).sendParticles(
-            ParticleTypes.FLASH,
-            position.x, position.y, position.z,
+            ParticleTypes.FLAME,
+            position.x + direction.x * 0.22,
+            position.y + direction.y * 0.10,
+            position.z + direction.z * 0.22,
             1,
-            0, 0, 0,
-            0
+            0.015, 0.015, 0.015,
+            0.0
         );
 
         // Smoke puffs
-        for (int i = 0; i < 3; i++) {
-            double offsetX = direction.x * 0.3 + (random.nextDouble() - 0.5) * 0.1;
-            double offsetY = direction.y * 0.3 + (random.nextDouble() - 0.5) * 0.1;
-            double offsetZ = direction.z * 0.3 + (random.nextDouble() - 0.5) * 0.1;
+        if (random.nextFloat() < 0.45f) {
+            double offsetX = direction.x * 0.18 + (random.nextDouble() - 0.5) * 0.04;
+            double offsetY = direction.y * 0.08 + (random.nextDouble() - 0.5) * 0.03;
+            double offsetZ = direction.z * 0.18 + (random.nextDouble() - 0.5) * 0.04;
 
             ((ServerLevel) level).sendParticles(
-                ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                ParticleTypes.SMOKE,
                 position.x + offsetX,
                 position.y + offsetY,
                 position.z + offsetZ,
                 1,
-                0.02, 0.02, 0.02,
-                0.01
+                0.01, 0.01, 0.01,
+                0.0
             );
         }
 
-        // Bullet casing particles (using small lava particles)
+        // Small spark/casing cue without a glowing splash.
         if (random.nextFloat() < 0.3f) {
             ((ServerLevel) level).sendParticles(
-                ParticleTypes.LAVA,
+                ParticleTypes.CRIT,
                 position.x - direction.x * 0.2,
                 position.y - 0.1,
                 position.z - direction.z * 0.2,
                 1,
-                0.1, 0, 0.1,
-                0.05
+                0.05, 0, 0.05,
+                0.02
             );
         }
     }

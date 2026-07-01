@@ -1,0 +1,26 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        "DRD",
+        "CEC",
+        "DRD"
+    ],
+    "key": {
+        "D": {
+            "item": "minecraft:diamond"
+        },
+        "R": {
+            "item": "minecraft:redstone_block"
+        },
+        "C": {
+            "item": "minecraft:amethyst_shard"
+        },
+        "E": {
+            "item": "flux_turret:energy_crystal"
+        }
+    },
+    "result": {
+        "item": "flux_turret:empowered_energy_crystal",
+        "count": 1
+    }
+}

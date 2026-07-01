@@ -34,7 +34,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
             return;
 
         if (be.isVisuallyPowered() && shouldRenderIdleCurrent(be))
-            renderIdleCurrent(be, poseStack, bufferSource);
+            renderIdleCurrent(be, partialTick, poseStack, bufferSource);
 
         long timeDiff = be.getLevel().getGameTime() - be.getLastFireTime();
         boolean isFiringWindow = timeDiff >= 0 && timeDiff <= 6;
@@ -57,30 +57,33 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
         return Vec3.atCenterOf(be.getBlockPos()).distanceToSqr(cameraPos) <= IDLE_CURRENT_RENDER_DISTANCE_SQR;
     }
 
-    private void renderIdleCurrent(TeslaCoilBlockEntity be, PoseStack poseStack, MultiBufferSource bufferSource) {
+    private void renderIdleCurrent(TeslaCoilBlockEntity be, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource) {
         VertexConsumer buffer = bufferSource.getBuffer(RenderType.lightning());
         Matrix4f matrix = poseStack.last().pose();
 
-        double time = be.getLevel().getGameTime() * 0.22;
-        for (int strand = 0; strand < 2; strand++) {
-            double phase = time + strand * Math.PI;
+        double time = (be.getLevel().getGameTime() + partialTick) * 0.12;
+        for (int strand = 0; strand < 3; strand++) {
+            double phase = time + strand * Math.PI * 2.0 / 3.0;
             Vec3 previous = null;
-            int segments = 8;
+            int segments = 24;
 
             for (int i = 0; i <= segments; i++) {
                 double t = i / (double) segments;
-                double angle = phase + t * Math.PI * 2.0;
-                double radius = 0.42 + 0.05 * Math.sin(time * 1.7 + i);
-                double y = 1.2 + t * 1.65;
+                double angle = phase + t * Math.PI * 4.0;
+                double radius = 0.34 + 0.08 * Math.sin(time * 2.1 + t * Math.PI * 2.0 + strand);
+                double y = 1.05 + t * 1.95;
                 Vec3 point = new Vec3(
                         0.5 + Math.cos(angle) * radius,
                         y,
                         0.5 + Math.sin(angle) * radius);
 
                 if (previous != null) {
-                    int alpha = strand == 0 ? 150 : 105;
-                    RenderUtils.drawBeam(matrix, buffer, previous, point, strand == 0 ? 0.025f : 0.018f,
-                            120, 175, 255, alpha);
+                    float width = strand == 0 ? 0.017f : 0.012f;
+                    int alpha = strand == 0 ? 118 : 82;
+                    RenderUtils.drawBeam(matrix, buffer, previous, point, width, 118, 180, 255, alpha);
+                    if (strand == 0 && i % 6 == 0) {
+                        RenderUtils.drawBeam(matrix, buffer, previous, point, width * 0.45f, 245, 250, 255, 160);
+                    }
                 }
                 previous = point;
             }

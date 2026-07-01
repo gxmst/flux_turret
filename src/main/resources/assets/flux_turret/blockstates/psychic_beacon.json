@@ -1,6 +1,15 @@
 {
     "variants": {
-        "": {
+        "half=lower,lit=false": {
+            "model": "flux_turret:block/psychic_beacon"
+        },
+        "half=lower,lit=true": {
+            "model": "flux_turret:block/psychic_beacon"
+        },
+        "half=upper,lit=false": {
+            "model": "flux_turret:block/psychic_beacon"
+        },
+        "half=upper,lit=true": {
             "model": "flux_turret:block/psychic_beacon"
         }
     }

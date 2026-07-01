@@ -2,6 +2,7 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.block.EnergyCrystalBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -38,6 +39,17 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         return energyStorage;
     }
 
+    public int getEnergyMultiplier() {
+        if (getBlockState().getBlock() instanceof EnergyCrystalBlock crystalBlock) {
+            return crystalBlock.getEnergyMultiplier();
+        }
+        return 1;
+    }
+
+    public boolean isEmpowered() {
+        return getEnergyMultiplier() > 1;
+    }
+
     public void setEnergyStored(int energy) {
         energyStorage.setEnergy(energy);
         setChanged();
@@ -56,8 +68,9 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         if (be.tickCounter % TICK_INTERVAL != 0) return;
 
         int capacity = be.energyStorage.getMaxEnergyStored();
-        int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get() * TICK_INTERVAL;
-        int maxOutput = TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * TICK_INTERVAL;
+        boolean wasFull = state.hasProperty(EnergyCrystalBlock.FULL) && state.getValue(EnergyCrystalBlock.FULL);
+        int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get() * be.getEnergyMultiplier() * TICK_INTERVAL;
+        int maxOutput = TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * be.getEnergyMultiplier() * TICK_INTERVAL;
 
         // Charge from lit furnace below
         boolean wasCharging = be.charging;
@@ -102,6 +115,11 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             be.activeTicks = 20;
         } else if (be.activeTicks > 0) {
             be.activeTicks--;
+        }
+
+        boolean isCharged = be.energyStorage.getEnergyStored() > 0;
+        if (state.hasProperty(EnergyCrystalBlock.FULL) && wasFull != isCharged) {
+            level.setBlock(pos, state.setValue(EnergyCrystalBlock.FULL, isCharged), 3);
         }
 
         if ((be.activeTicks > 0) != (prevActiveTicks > 0) || be.charging != wasCharging) {
@@ -169,9 +187,12 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         return cache;
     }
 
-    private static class ConfigurableEnergyStorage extends EnergyStorage {
+    private class ConfigurableEnergyStorage extends EnergyStorage {
         ConfigurableEnergyStorage() {
-            super(getConfiguredCapacity(), getConfiguredCapacity(), getConfiguredMaxExtract(), 0);
+            super(TurretConfig.ENERGY_CRYSTAL_CAPACITY.get(),
+                    TurretConfig.ENERGY_CRYSTAL_CAPACITY.get(),
+                    TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * TICK_INTERVAL, 0);
+            applyConfig();
         }
 
         void applyConfig() {
@@ -198,27 +219,29 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             return super.extractEnergy(maxExtract, simulate);
         }
 
+        // Read-only getters intentionally skip applyConfig(): the backing fields
+        // (energy/capacity/maxExtract) are refreshed once per tick by the block
+        // entity's tick() and by every write path below. Neighboring turrets poll
+        // these getters many times per tick when pulling power, so re-reading the
+        // Forge config on each call was pure overhead. A config reload is reflected
+        // on the next tick at the latest.
         @Override
         public int getEnergyStored() {
-            applyConfig();
             return super.getEnergyStored();
         }
 
         @Override
         public int getMaxEnergyStored() {
-            applyConfig();
             return super.getMaxEnergyStored();
         }
 
         @Override
         public boolean canExtract() {
-            applyConfig();
             return super.canExtract();
         }
 
         @Override
         public boolean canReceive() {
-            applyConfig();
             return super.canReceive();
         }
 
@@ -239,12 +262,12 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             applyConfig();
         }
 
-        private static int getConfiguredCapacity() {
-            return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
+        private int getConfiguredCapacity() {
+            return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get() * EnergyCrystalBlockEntity.this.getEnergyMultiplier();
         }
 
-        private static int getConfiguredMaxExtract() {
-            return TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * TICK_INTERVAL;
+        private int getConfiguredMaxExtract() {
+            return TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * EnergyCrystalBlockEntity.this.getEnergyMultiplier() * TICK_INTERVAL;
         }
     }
 

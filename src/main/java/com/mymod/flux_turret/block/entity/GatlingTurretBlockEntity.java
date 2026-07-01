@@ -2,9 +2,12 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -63,6 +66,13 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     @Override
     protected int getMinOperatingCost() {
         return TurretConfig.GATLING_FIRE_COST.get();
+    }
+
+    @Override
+    public boolean canInstallUpgrade(TurretUpgradeType type) {
+        return type == TurretUpgradeType.ARMOR_PIERCING_ROUNDS
+                || type == TurretUpgradeType.FIRE_ROUNDS
+                || type == TurretUpgradeType.SLOW_ROUNDS;
     }
 
     @Override
@@ -127,7 +137,17 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
                 int interval = getFireInterval(be.spinUp);
                 // Reset invulnerability to allow rapid successive hits from gatling
                 target.invulnerableTime = 0;
-                target.hurt(level.damageSources().magic(), TurretConfig.GATLING_DAMAGE.get().floatValue());
+                float damage = TurretConfig.GATLING_DAMAGE.get().floatValue();
+                if (be.hasUpgrade(TurretUpgradeType.ARMOR_PIERCING_ROUNDS)) {
+                    damage += Math.min(4.0f, target.getArmorValue() * 0.22f + damage * 0.25f);
+                }
+                target.hurt(level.damageSources().magic(), damage);
+                if (be.hasUpgrade(TurretUpgradeType.FIRE_ROUNDS)) {
+                    target.setSecondsOnFire(4);
+                }
+                if (be.hasUpgrade(TurretUpgradeType.SLOW_ROUNDS)) {
+                    target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 60, 0, true, true));
+                }
 
                 // Enhanced Red Alert style visual effects
                 Vec3 turretPos = Vec3.atCenterOf(pos).add(0, 1.2, 0);

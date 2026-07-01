@@ -1,5 +1,6 @@
 {
     "variants": {
-        "": { "model": "flux_turret:block/energy_crystal" }
+        "full=false": { "model": "flux_turret:block/energy_crystal" },
+        "full=true": { "model": "flux_turret:block/energy_crystal" }
     }
 }

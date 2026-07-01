@@ -1,0 +1,6 @@
+{
+    "variants": {
+        "full=false": { "model": "flux_turret:block/empowered_energy_crystal" },
+        "full=true": { "model": "flux_turret:block/empowered_energy_crystal" }
+    }
+}

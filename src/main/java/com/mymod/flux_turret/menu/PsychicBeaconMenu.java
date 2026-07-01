@@ -3,7 +3,9 @@ package com.mymod.flux_turret.menu;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.entity.PsychicBeaconBlockEntity;
+import com.mymod.flux_turret.network.CycleBeaconDoctrinePacket;
 import com.mymod.flux_turret.network.ModNetworking;
+import com.mymod.flux_turret.network.SetBeaconBuffPacket;
 import com.mymod.flux_turret.network.ToggleBeaconPacket;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -15,7 +17,7 @@ import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.item.ItemStack;
 
 public class PsychicBeaconMenu extends AbstractContainerMenu {
-    private static final int DATA_SIZE = 13;
+    private static final int DATA_SIZE = 17;
     private static final int ENERGY_LOW = 0;
     private static final int ENERGY_HIGH = 1;
     private static final int MAX_ENERGY_LOW = 2;
@@ -29,6 +31,10 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
     private static final int NEARBY_TESLA = 10;
     private static final int NEARBY_GATLING = 11;
     private static final int ENABLED = 12;
+    private static final int SELECTED_BUFF_MASK = 13;
+    private static final int DOCTRINE = 14;
+    private static final int ACTIVE_AFFIX = 15;
+    private static final int LAST_BATTLE_SCORE = 16;
 
     private final PsychicBeaconBlockEntity beacon;
     private final BlockPos beaconPos;
@@ -94,12 +100,36 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         return data.get(ENABLED);
     }
 
+    public int getSelectedBuffMask() {
+        return data.get(SELECTED_BUFF_MASK);
+    }
+
+    public int getDoctrine() {
+        return data.get(DOCTRINE);
+    }
+
+    public int getActiveAffix() {
+        return data.get(ACTIVE_AFFIX);
+    }
+
+    public int getLastBattleScore() {
+        return data.get(LAST_BATTLE_SCORE);
+    }
+
     public PsychicBeaconBlockEntity getBeacon() {
         return beacon;
     }
 
     public void toggleEnabled() {
         ModNetworking.CHANNEL.sendToServer(new ToggleBeaconPacket(beaconPos));
+    }
+
+    public void toggleBuff(int buffIndex) {
+        ModNetworking.CHANNEL.sendToServer(new SetBeaconBuffPacket(beaconPos, buffIndex));
+    }
+
+    public void cycleDoctrine() {
+        ModNetworking.CHANNEL.sendToServer(new CycleBeaconDoctrinePacket(beaconPos));
     }
 
     @Override
@@ -128,6 +158,10 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         data.set(NEARBY_TESLA, cached[1]);
         data.set(NEARBY_GATLING, cached[2]);
         data.set(ENABLED, beacon.isEnabled() ? 1 : 0);
+        data.set(SELECTED_BUFF_MASK, beacon.getSelectedBuffMask());
+        data.set(DOCTRINE, beacon.getDoctrine());
+        data.set(ACTIVE_AFFIX, beacon.getActiveWaveAffix());
+        data.set(LAST_BATTLE_SCORE, beacon.getLastBattleScore());
         super.broadcastChanges();
     }
 

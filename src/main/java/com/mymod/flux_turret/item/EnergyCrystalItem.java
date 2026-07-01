@@ -8,6 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.world.item.Item;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
@@ -28,7 +29,7 @@ public class EnergyCrystalItem extends BlockItem {
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         super.appendHoverText(stack, level, tooltip, flag);
         int stored = getEnergyStored(stack);
-        int max = TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
+        int max = getMaxEnergyStored(stack);
         ChatFormatting color = stored > 0 ? ChatFormatting.AQUA : ChatFormatting.GRAY;
         tooltip.add(Component.literal(String.format("Energy: %d / %d FE", stored, max))
                 .withStyle(color));
@@ -43,14 +44,14 @@ public class EnergyCrystalItem extends BlockItem {
         if (blockEntityTag != null && blockEntityTag.contains("Energy")) {
             Tag energyTag = blockEntityTag.get("Energy");
             if (energyTag instanceof IntTag intTag) {
-                return clampEnergy(intTag.getAsInt());
+                return clampEnergy(stack, intTag.getAsInt());
             }
             if (energyTag instanceof CompoundTag compoundTag) {
-                return clampEnergy(compoundTag.getInt("energy"));
+                return clampEnergy(stack, compoundTag.getInt("energy"));
             }
         }
         // No NBT = freshly smelted = full charge
-        return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
+        return getMaxEnergyStored(stack);
     }
 
     public static boolean hasEnergyNBT(ItemStack stack) {
@@ -64,18 +65,30 @@ public class EnergyCrystalItem extends BlockItem {
     }
 
     public static ItemStack createChargedStack(int energy) {
-        ItemStack stack = new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get());
+        return createChargedStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get(), energy);
+    }
+
+    public static ItemStack createChargedStack(Item item, int energy) {
+        ItemStack stack = new ItemStack(item);
         setEnergyStored(stack, energy);
         return stack;
     }
 
     public static void setEnergyStored(ItemStack stack, int energy) {
         CompoundTag blockEntityTag = stack.getOrCreateTagElement("BlockEntityTag");
-        blockEntityTag.put("Energy", IntTag.valueOf(clampEnergy(energy)));
+        blockEntityTag.put("Energy", IntTag.valueOf(clampEnergy(stack, energy)));
     }
 
-    private static int clampEnergy(int energy) {
-        return Math.max(0, Math.min(energy, TurretConfig.ENERGY_CRYSTAL_CAPACITY.get()));
+    public static int getMaxEnergyStored(ItemStack stack) {
+        if (stack.getItem() instanceof EnergyCrystalItem crystalItem
+                && crystalItem.getBlock() instanceof com.mymod.flux_turret.block.EnergyCrystalBlock crystalBlock) {
+            return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get() * crystalBlock.getEnergyMultiplier();
+        }
+        return TurretConfig.ENERGY_CRYSTAL_CAPACITY.get();
+    }
+
+    private static int clampEnergy(ItemStack stack, int energy) {
+        return Math.max(0, Math.min(energy, getMaxEnergyStored(stack)));
     }
 
     @Override

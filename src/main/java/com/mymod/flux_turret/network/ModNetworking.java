@@ -23,5 +23,13 @@ public class ModNetworking {
                 TurretFirePacket::encode,
                 TurretFirePacket::decode,
                 TurretFirePacket::handle);
+        CHANNEL.registerMessage(2, SetBeaconBuffPacket.class,
+                SetBeaconBuffPacket::encode,
+                SetBeaconBuffPacket::decode,
+                SetBeaconBuffPacket::handle);
+        CHANNEL.registerMessage(3, CycleBeaconDoctrinePacket.class,
+                CycleBeaconDoctrinePacket::encode,
+                CycleBeaconDoctrinePacket::decode,
+                CycleBeaconDoctrinePacket::handle);
     }
 }

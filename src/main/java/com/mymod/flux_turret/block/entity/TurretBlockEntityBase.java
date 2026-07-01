@@ -1,6 +1,7 @@
 package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -59,6 +60,7 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     protected long lastFireTime = 0;
     protected int tickCounter = 0;
     protected List<Monster> monsterCache = List.of();
+    private int upgradeMask = 0;
 
     private final TurretEnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyHandler;
@@ -141,6 +143,7 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         tag.putBoolean("IsFiring", isFiring);
         tag.putLong("LastFireTime", lastFireTime);
         tag.putBoolean("HasPower", visualHasEnergy);
+        tag.putInt("UpgradeMask", upgradeMask);
         saveAdditionalTurret(tag);
     }
 
@@ -152,6 +155,7 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         isFiring = tag.getBoolean("IsFiring");
         lastFireTime = tag.getLong("LastFireTime");
         visualHasEnergy = tag.getBoolean("HasPower");
+        upgradeMask = tag.getInt("UpgradeMask");
         loadAdditionalTurret(tag);
     }
 
@@ -231,9 +235,12 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     }
 
     protected void refreshMonsterCache(Level level, BlockPos pos) {
+        // Read the config flag once per scan rather than once per candidate entity;
+        // getEntitiesOfClass invokes the predicate for every monster in range.
+        final boolean friendlyFire = TurretConfig.FRIENDLY_FIRE_PROTECTION.get();
         AABB scanArea = new AABB(pos).inflate(getTargetRange());
         monsterCache = level.getEntitiesOfClass(Monster.class, scanArea,
-                m -> m.isAlive() && !m.isRemoved() && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !m.hasCustomName()));
+                m -> m.isAlive() && !m.isRemoved() && (!friendlyFire || !m.hasCustomName()));
 
         double x = pos.getX() + 0.5;
         double y = pos.getY() + getEyeHeight();
@@ -332,6 +339,19 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
 
     public int getEnergyStored() {
         return energyStorage.getEnergyStored();
+    }
+
+    public boolean hasUpgrade(TurretUpgradeType type) {
+        return (upgradeMask & type.getMask()) != 0;
+    }
+
+    public void installUpgrade(TurretUpgradeType type) {
+        upgradeMask |= type.getMask();
+        markUpdated();
+    }
+
+    public boolean canInstallUpgrade(TurretUpgradeType type) {
+        return false;
     }
 
     @Override

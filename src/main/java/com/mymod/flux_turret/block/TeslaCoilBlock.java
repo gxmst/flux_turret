@@ -2,6 +2,7 @@ package com.mymod.flux_turret.block;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
+import com.mymod.flux_turret.item.TurretUpgradeModuleItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
@@ -25,6 +26,10 @@ public class TeslaCoilBlock extends TurretBlockBase {
         BlockEntity be = level.getBlockEntity(pos);
 
         if (be instanceof TeslaCoilBlockEntity tesla) {
+            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryInstall(level, pos, player, hand, be);
+            if (upgradeResult != InteractionResult.PASS) {
+                return upgradeResult;
+            }
             if (hand == InteractionHand.MAIN_HAND) {
                 if (player.getFoodData().getFoodLevel() > 6 || player.isCreative()) {
                     if (!level.isClientSide) {
