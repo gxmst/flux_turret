@@ -32,6 +32,12 @@ public class CycleBeaconDoctrinePacket {
             if (player.distanceToSqr(msg.pos.getX() + 0.5, msg.pos.getY() + 0.5, msg.pos.getZ() + 0.5) > 8 * 8) return;
             BlockEntity be = player.level().getBlockEntity(msg.pos);
             if (be instanceof PsychicBeaconBlockEntity beacon) {
+                if (!beacon.canPlayerConfigure(player)) return;
+                if (beacon.isBattleInProgress()) {
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.flux_turret.beacon_settings_locked"), true);
+                    return;
+                }
                 beacon.cycleDoctrine();
             }
         });

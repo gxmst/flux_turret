@@ -12,6 +12,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.energy.EnergyStorage;
 
+import java.util.function.IntUnaryOperator;
+
 public class ChargeHelper {
     private ChargeHelper() {}
 
@@ -29,6 +31,15 @@ public class ChargeHelper {
             Level level, BlockPos pos, BlockState state,
             Player player, ItemStack heldItem,
             EnergyStorage storage, int redstoneCharge, int redstoneBlockCharge) {
+        return tryRedstoneCharge(level, pos, state, player, heldItem, storage,
+                amount -> receiveFully(storage, amount), redstoneCharge, redstoneBlockCharge);
+    }
+
+    public static InteractionResult tryRedstoneCharge(
+            Level level, BlockPos pos, BlockState state,
+            Player player, ItemStack heldItem,
+            EnergyStorage storage, IntUnaryOperator manualReceiver,
+            int redstoneCharge, int redstoneBlockCharge) {
 
         int chargeAmount = 0;
         if (heldItem.is(Items.REDSTONE)) {
@@ -41,13 +52,15 @@ public class ChargeHelper {
             int capacity = storage.getMaxEnergyStored();
             int current = storage.getEnergyStored();
             if (current < capacity) {
-                int received = storage.receiveEnergy(chargeAmount, false);
+                boolean usedBlock = heldItem.is(Items.REDSTONE_BLOCK);
+                int requested = Math.min(chargeAmount, capacity - current);
+                int received = Math.min(requested, Math.max(0, manualReceiver.applyAsInt(requested)));
                 if (received > 0) {
                     if (!player.getAbilities().instabuild) {
                         heldItem.shrink(1);
                     }
                     level.sendBlockUpdated(pos, state, state, 3);
-                    float pitch = heldItem.is(Items.REDSTONE_BLOCK) ? 1.8f : 1.5f;
+                    float pitch = usedBlock ? 1.8f : 1.5f;
                     level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 1.0f, pitch);
                     player.displayClientMessage(
                             Component.translatable("message.flux_turret.charge_success",
@@ -59,5 +72,17 @@ public class ChargeHelper {
             }
         }
         return null;
+    }
+
+    private static int receiveFully(EnergyStorage storage, int amount) {
+        int receivedTotal = 0;
+        int remaining = Math.max(0, amount);
+        while (remaining > 0) {
+            int received = storage.receiveEnergy(remaining, false);
+            if (received <= 0) break;
+            receivedTotal += received;
+            remaining -= received;
+        }
+        return receivedTotal;
     }
 }

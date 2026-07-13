@@ -92,12 +92,20 @@ public abstract class TurretBlockBase extends BaseEntityBlock {
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         BlockEntity be = level.getBlockEntity(pos);
         if (be instanceof TurretBlockEntityBase) {
-            InteractionResult result = TurretUpgradeModuleItem.tryInstall(level, pos, player, hand, be);
+            InteractionResult result = TurretUpgradeModuleItem.tryHandleInteraction(level, pos, player, hand, be);
             if (result != InteractionResult.PASS) {
                 return result;
             }
         }
         return super.use(state, level, pos, player, hand, hit);
+    }
+
+    @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (state.getBlock() != newState.getBlock() && !level.isClientSide) {
+            TurretUpgradeModuleItem.dropInstalledModules(level, pos, level.getBlockEntity(pos));
+        }
+        super.onRemove(state, level, pos, newState, isMoving);
     }
 
     @Nullable

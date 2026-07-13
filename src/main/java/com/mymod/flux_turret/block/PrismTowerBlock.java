@@ -31,7 +31,7 @@ public class PrismTowerBlock extends TurretBlockBase {
         BlockEntity be = level.getBlockEntity(pos);
 
         if (be instanceof PrismTowerBlockEntity prism) {
-            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryInstall(level, pos, player, hand, be);
+            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryHandleInteraction(level, pos, player, hand, be);
             if (upgradeResult != InteractionResult.PASS) {
                 return upgradeResult;
             }

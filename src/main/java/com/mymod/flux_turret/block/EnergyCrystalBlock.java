@@ -78,7 +78,6 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
                     TurretConfig.ENERGY_CRYSTAL_REDSTONE_CHARGE.get() * be.getEnergyMultiplier(),
                     TurretConfig.ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE.get() * be.getEnergyMultiplier());
             if (chargeResult != null) {
-                be.setChanged();
                 return chargeResult;
             }
 

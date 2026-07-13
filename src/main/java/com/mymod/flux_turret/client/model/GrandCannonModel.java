@@ -74,7 +74,15 @@ public class GrandCannonModel extends GeoModel<GrandCannonBlockEntity> {
                 double dy = ty - centerY;
                 double dz = tz - centerZ;
                 double dist = Math.sqrt(dx * dx + dz * dz);
-                mount.setRotY(-(float) Math.atan2(dx, -dz));
+                float worldYaw = -(float) Math.atan2(dx, -dz);
+                float baseYaw = switch (facing) {
+                    case SOUTH -> (float) Math.PI;
+                    case WEST -> -(float) Math.PI / 2.0f;
+                    case EAST -> (float) Math.PI / 2.0f;
+                    default -> 0.0f;
+                };
+                float localYaw = (float) Math.atan2(Math.sin(worldYaw + baseYaw), Math.cos(worldYaw + baseYaw));
+                mount.setRotY(localYaw);
                 gun.setRotX((float) Math.atan2(dy, dist));
             }
         }

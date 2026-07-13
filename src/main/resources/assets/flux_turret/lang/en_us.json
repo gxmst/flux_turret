@@ -45,8 +45,8 @@
     "message.flux_turret.beacon_warning": "[WARNING] External redstone interference detected! Beacon safety lock will disengage in 3 seconds!",
     "message.flux_turret.beacon_resumed": "Redstone signal cleared, beacon combat operations resumed!",
     "message.flux_turret.beacon_defense_none": "[Psychic Radar] Purification quota missed: %d / %d. Supply crate synthesis cancelled.",
-    "message.flux_turret.beacon_energy_low": "[WARNING] Insufficient psychic energy %d FE! Chest synthesis failed!",
-    "message.flux_turret.beacon_no_chest_space": "[WARNING] Cannot find suitable location to place supply crate!",
+    "message.flux_turret.beacon_energy_low": "[WARNING] Reward delivery is waiting for %d FE of stored psychic energy.",
+    "message.flux_turret.beacon_no_chest_space": "[WARNING] No supply-crate space; the reward will wait until room is cleared.",
     "message.flux_turret.beacon_defense_success": "[Psychic Radar] Today's defense mission successful! Score: %d. Supply crate has been synthesized and deployed!",
     "message.flux_turret.beacon_affix": "[Psychic Radar] Tonight's wave affix: %s",
     "message.flux_turret.beacon_stability_drop": "[Psychic Radar] Beacon stability is falling: %d / %d",
@@ -62,7 +62,9 @@
     "message.flux_turret.upgrade_installed": "Installed upgrade: %s",
     "message.flux_turret.upgrade_incompatible": "This module does not fit the current turret.",
     "message.flux_turret.upgrade_already_installed": "This module is already installed.",
-    "tooltip.flux_turret.upgrade_module.install": "Right-click the matching turret to install; sneak-right-click also works",
+    "message.flux_turret.upgrade_recovered": "Recovered %d upgrade module(s).",
+    "message.flux_turret.upgrade_none_installed": "No upgrade modules are installed.",
+    "tooltip.flux_turret.upgrade_module.install": "Right-click a matching turret to install; sneak-right-click with an empty hand to recover all",
     "upgrade.flux_turret.armor_piercing_rounds": "Armor-Piercing Rounds: Gatling hits gain bonus damage against armored targets.",
     "upgrade.flux_turret.fire_rounds": "Fire Rounds: Gatling hits ignite targets.",
     "upgrade.flux_turret.slow_rounds": "Slow Rounds: Gatling hits briefly slow targets.",
@@ -107,5 +109,10 @@
     "screen.flux_turret.psychic_beacon.state.active": "Defending",
     "screen.flux_turret.psychic_beacon.state.failed": "Failed",
     "screen.flux_turret.psychic_beacon.state.warning": "Warning",
-    "screen.flux_turret.psychic_beacon.state.unknown": "Unknown"
+    "screen.flux_turret.psychic_beacon.state.unknown": "Unknown",
+    "message.flux_turret.beacon_defense_aborted": "[Psychic Radar] Defense mission aborted. No supply crate will be awarded.",
+    "message.flux_turret.beacon_access_denied": "Only the beacon owner, their team, or a server operator can configure this beacon.",
+    "message.flux_turret.beacon_settings_locked": "Beacon settings cannot be changed while a defense mission is in progress.",
+    "subtitles.flux_turret.prism_shoot": "Prism Tower fires",
+    "death.attack.flux_turret.gatling": "%s was shredded by a Gatling Turret"
 }

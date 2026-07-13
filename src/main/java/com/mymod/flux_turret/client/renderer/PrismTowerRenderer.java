@@ -32,8 +32,11 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
         if (be.getLevel() == null)
             return;
 
-        long timeDiff = be.getLevel().getGameTime() - be.getLastFireTime();
-        boolean isFiringWindow = timeDiff >= 0 && timeDiff <= 5;
+        boolean isFiringWindow = be.visualCountdown > 0;
+        if (!isFiringWindow) {
+            be.visualCachedTargetPos = null;
+            return;
+        }
 
         boolean isSupport = false;
 
@@ -48,10 +51,8 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
             isSupport = true;
         }
 
-        if (isFiringWindow && be.visualCachedTargetPos != null) {
+        if (be.visualCachedTargetPos != null) {
             renderLaser(be, be.visualCachedTargetPos, isSupport, be.getSupportCount(), poseStack, bufferSource);
-        } else if (!isFiringWindow) {
-            be.visualCachedTargetPos = null;
         }
     }
 

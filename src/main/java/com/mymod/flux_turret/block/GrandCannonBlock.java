@@ -7,7 +7,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
@@ -80,9 +79,13 @@ public class GrandCannonBlock extends BaseEntityBlock {
 
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
-        if (state.getBlock() != newState.getBlock()) {
+        if (state.getBlock() != newState.getBlock() && !level.isClientSide) {
             CannonPart part = state.getValue(PART);
             Direction facing = state.getValue(FACING);
+            BlockPos corePos = part == CannonPart.BACK_LEFT ? pos : part.getCorePos(pos, facing);
+
+            // Draining the core first makes recursive multi-block teardown idempotent.
+            TurretUpgradeModuleItem.dropInstalledModules(level, corePos, level.getBlockEntity(corePos));
 
             if (part == CannonPart.BACK_LEFT) {
                 // Core removed: tear down the generated parts without creating extra drops.
@@ -96,7 +99,6 @@ public class GrandCannonBlock extends BaseEntityBlock {
                 }
             } else {
                 // Part broken: find core and destroy entire structure
-                BlockPos corePos = part.getCorePos(pos, facing);
                 BlockState coreState = level.getBlockState(corePos);
                 if (coreState.getBlock() == this && coreState.hasProperty(PART)
                         && coreState.getValue(PART) == CannonPart.BACK_LEFT) {
@@ -105,17 +107,6 @@ public class GrandCannonBlock extends BaseEntityBlock {
             }
         }
         super.onRemove(state, level, pos, newState, isMoving);
-    }
-
-    @Override
-    public void playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
-        if (!level.isClientSide && !player.isCreative()) {
-            CannonPart part = state.getValue(PART);
-            Direction facing = state.getValue(FACING);
-            BlockPos corePos = part == CannonPart.BACK_LEFT ? pos : part.getCorePos(pos, facing);
-            popResource(level, corePos, new ItemStack(this));
-        }
-        super.playerWillDestroy(level, pos, state, player);
     }
 
     @Override
@@ -129,7 +120,7 @@ public class GrandCannonBlock extends BaseEntityBlock {
 
         BlockEntity be = level.getBlockEntity(corePos);
         if (be instanceof GrandCannonBlockEntity cannon) {
-            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryInstall(level, corePos, player, hand, be);
+            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryHandleInteraction(level, corePos, player, hand, be);
             if (upgradeResult != InteractionResult.PASS) {
                 return upgradeResult;
             }

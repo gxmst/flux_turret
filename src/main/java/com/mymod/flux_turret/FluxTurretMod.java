@@ -1,7 +1,7 @@
 package com.mymod.flux_turret;
 
 import com.mymod.flux_turret.block.entity.PsychicBeaconBlockEntity;
-import com.mymod.flux_turret.client.TurretConfigScreen;
+import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
 import com.mymod.flux_turret.client.renderer.EnergyCrystalRenderer;
 import com.mymod.flux_turret.client.renderer.GatlingTurretRenderer;
 import com.mymod.flux_turret.client.renderer.GrandCannonRenderer;
@@ -18,7 +18,6 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
@@ -26,7 +25,6 @@ import net.minecraftforge.event.entity.player.ItemTooltipEvent;
 import net.minecraftforge.event.entity.player.PlayerSleepInBedEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
@@ -40,19 +38,12 @@ public class FluxTurretMod {
     public static final String MOD_ID = "flux_turret";
     private static final Logger LOGGER = LogManager.getLogger();
 
-    // Constants for beacon detection
-    private static final int BEACON_SLEEP_PREVENTION_RADIUS = 100;
-    private static final int BEACON_DEATH_DETECTION_RADIUS = 32;
+    public FluxTurretMod(FMLJavaModLoadingContext loadingContext) {
+        IEventBus modEventBus = loadingContext.getModEventBus();
 
-    public FluxTurretMod() {
-        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
-
-        ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, TurretConfig.SPEC);
-
-        ModLoadingContext.get().registerExtensionPoint(
-                ConfigScreenHandler.ConfigScreenFactory.class,
-                () -> new ConfigScreenHandler.ConfigScreenFactory(
-                        (client, parent) -> new TurretConfigScreen(parent)));
+        // All values affect server-authoritative gameplay. SERVER configs are
+        // synchronized to joining clients; COMMON configs are not.
+        loadingContext.registerConfig(ModConfig.Type.SERVER, TurretConfig.SPEC);
 
         ModRegistry.register(modEventBus);
 
@@ -108,6 +99,7 @@ public class FluxTurretMod {
             // Static beacon registry must not outlive the server (integrated server
             // re-entry, dimension churn) — drop all tracked references.
             PsychicBeaconBlockEntity.clearActiveBeacons();
+            PrismTowerBlockEntity.clearLoadedTowers();
             // Same for the per-level shared monster scan cache; its keys are
             // ServerLevels that must not be pinned past server shutdown.
             com.mymod.flux_turret.util.TurretScanCache.clearAll();
@@ -122,6 +114,7 @@ public class FluxTurretMod {
             if (event.getLevel() instanceof net.minecraft.world.level.Level level && !level.isClientSide) {
                 PsychicBeaconBlockEntity.clearBeaconsForLevel(level);
                 if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                    PrismTowerBlockEntity.clearTowersForLevel(serverLevel);
                     com.mymod.flux_turret.util.TurretScanCache.clearLevel(serverLevel);
                 }
             }
@@ -132,8 +125,7 @@ public class FluxTurretMod {
             Player player = event.getEntity();
             Level level = player.level();
             if (level.isClientSide) return;
-            BlockPos playerPos = player.blockPosition();
-            if (PsychicBeaconBlockEntity.findNearbyActiveBeacon(level, playerPos, BEACON_SLEEP_PREVENTION_RADIUS) != null) {
+            if (PsychicBeaconBlockEntity.hasActiveBattle(level)) {
                 event.setResult(Player.BedSleepingProblem.OTHER_PROBLEM);
                 player.displayClientMessage(
                     Component.translatable("message.flux_turret.psychic_wave")
@@ -145,25 +137,29 @@ public class FluxTurretMod {
 
         @SubscribeEvent
         public static void onMobDeath(LivingDeathEvent event) {
-            if (event.getEntity() instanceof net.minecraft.world.entity.monster.Monster monster) {
-                Level level = monster.level();
+            if (event.getEntity() instanceof net.minecraft.world.entity.Mob mob) {
+                Level level = mob.level();
                 if (level.isClientSide) return;
 
-                BlockPos spawnedByBeaconPos = PsychicBeaconBlockEntity.getBeaconSpawnPos(monster);
+                BlockPos spawnedByBeaconPos = PsychicBeaconBlockEntity.getBeaconSpawnPos(mob);
                 if (spawnedByBeaconPos != null) {
                     BlockEntity blockEntity = level.getBlockEntity(spawnedByBeaconPos);
                     if (blockEntity instanceof PsychicBeaconBlockEntity beacon
                             && beacon.getBeaconState() == PsychicBeaconBlockEntity.STATE_ACTIVE) {
                         beacon.incrementTodayKills();
-                        return;
                     }
                 }
+            }
+        }
 
-                BlockPos deathPos = monster.blockPosition();
-                PsychicBeaconBlockEntity beacon = PsychicBeaconBlockEntity.findNearbyActiveBeacon(level, deathPos, BEACON_DEATH_DETECTION_RADIUS);
-                if (beacon != null) {
-                    beacon.incrementTodayKills();
-                }
+        @SubscribeEvent
+        public static void onEntityJoinLevel(net.minecraftforge.event.entity.EntityJoinLevelEvent event) {
+            if (event.getLevel().isClientSide || !(event.getEntity() instanceof net.minecraft.world.entity.Mob mob)) {
+                return;
+            }
+            BlockPos beaconPos = PsychicBeaconBlockEntity.getBeaconSpawnPos(mob);
+            if (beaconPos != null) {
+                PsychicBeaconBlockEntity.ensureMoveToBeaconGoal(mob, beaconPos);
             }
         }
     }

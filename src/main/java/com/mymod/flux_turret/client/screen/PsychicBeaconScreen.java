@@ -94,6 +94,7 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
                     : "screen.flux_turret.psychic_beacon.start"));
         }
         if (doctrineButton != null) {
+            doctrineButton.active = !menu.isBattleInProgress();
             doctrineButton.setMessage(Component.translatable(PsychicBeaconBlockEntity.getDoctrineTranslationKey(menu.getDoctrine())));
         }
         if (linkButton != null) {
@@ -124,7 +125,8 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         int threatLevel = menu.getThreatLevel();
         int kills = menu.getTodayKills();
         int minKills = PsychicBeaconBlockEntity.getRequiredKillsForThreatLevel(threatLevel);
-        int dawnCost = TurretConfig.PSYCHIC_BEACON_DAWN_COST.get();
+        int dawnCost = PsychicBeaconBlockEntity.getEffectiveDawnCost(
+                TurretConfig.PSYCHIC_BEACON_DAWN_COST.get(), maxEnergy);
 
         drawBeaconDiagram(guiGraphics, x + 20, y + 47, stateColor, threatLevel, partialTick);
         drawText(guiGraphics, tr("screen.flux_turret.psychic_beacon.buffs"), x + 16, y + 125, 78, TEXT_DIM);
@@ -155,13 +157,14 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         int selectedMask = menu.getSelectedBuffMask();
         int maxSelected = PsychicBeaconBlockEntity.getMaxSelectedBuffs(threatLevel);
         boolean selectionFull = Integer.bitCount(selectedMask & PsychicBeaconBlockEntity.getUnlockedBuffMask(threatLevel)) >= maxSelected;
+        boolean settingsLocked = menu.isBattleInProgress();
 
         for (int i = 0; i < buffButtons.length; i++) {
             Button button = buffButtons[i];
             if (button == null) continue;
             boolean unlocked = PsychicBeaconBlockEntity.isBuffUnlocked(i, threatLevel);
             boolean selected = (selectedMask & (1 << i)) != 0;
-            button.active = unlocked && (selected || !selectionFull);
+            button.active = !settingsLocked && unlocked && (selected || !selectionFull);
             button.setMessage(Component.literal((selected ? ">" : "") + getBuffName(i)));
         }
     }

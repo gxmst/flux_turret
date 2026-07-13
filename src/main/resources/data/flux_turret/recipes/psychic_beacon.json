@@ -1,0 +1,23 @@
+{
+    "type": "minecraft:crafting_shaped",
+    "pattern": [
+        " R ",
+        "DID",
+        "III"
+    ],
+    "key": {
+        "R": {
+            "item": "minecraft:redstone_block"
+        },
+        "D": {
+            "item": "minecraft:diamond"
+        },
+        "I": {
+            "item": "minecraft:iron_block"
+        }
+    },
+    "result": {
+        "item": "flux_turret:psychic_beacon",
+        "count": 1
+    }
+}

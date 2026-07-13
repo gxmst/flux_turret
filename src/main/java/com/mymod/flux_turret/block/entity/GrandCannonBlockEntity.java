@@ -7,13 +7,12 @@ import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -167,6 +166,8 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             return;
         }
 
+        be.flushThrottledUpdate();
+
         // Periodically validate structure integrity
         be.structureCheckCounter++;
         if (be.structureCheckCounter % STRUCTURE_CHECK_INTERVAL == 0 || !be.formed) {
@@ -175,14 +176,29 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             boolean wasFormed = be.formed;
             be.formed = be.checkStructureComplete(level, pos, facing);
             if (be.formed != wasFormed) {
+                if (!be.formed) {
+                    be.targetId = -1;
+                    be.isFiring = false;
+                    be.warmupTicks = 0;
+                    be.clearAimTarget();
+                }
                 be.markUpdated();
             }
         }
 
-        if (!be.formed) return;
+        if (!be.formed) {
+            if (be.targetId != -1 || be.isFiring || be.warmupTicks != 0 || be.hasAimTarget()) {
+                be.targetId = -1;
+                be.isFiring = false;
+                be.warmupTicks = 0;
+                be.clearAimTarget();
+                be.requestThrottledUpdate();
+                be.flushThrottledUpdate();
+            }
+            return;
+        }
 
         int prevTargetId = be.targetId;
-        boolean prevFiring = be.isFiring;
         boolean prevHasEnergy = be.visualHasEnergy;
 
         Direction signalFacing = state.hasProperty(GrandCannonBlock.FACING)
@@ -191,10 +207,12 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             be.targetId = -1;
             be.isFiring = false;
             be.warmupTicks = 0;
+            be.clearAimTarget();
             be.visualHasEnergy = be.getEnergyStorage().getEnergyStored() >= TurretConfig.GRAND_CANNON_FIRE_COST.get();
-            if (be.targetId != prevTargetId || be.isFiring != prevFiring || be.visualHasEnergy != prevHasEnergy) {
-                be.markUpdated();
+            if (be.targetId != prevTargetId || be.visualHasEnergy != prevHasEnergy) {
+                be.requestThrottledUpdate();
             }
+            be.flushThrottledUpdate();
             return;
         }
 
@@ -202,8 +220,10 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         boolean hasEnoughEnergy = be.getEnergyStorage().getEnergyStored() >= fireCost;
         be.visualHasEnergy = hasEnoughEnergy;
 
-        if (be.attackCooldown > 0)
+        if (be.attackCooldown > 0) {
             be.attackCooldown--;
+            if (be.attackCooldown == 0 || level.getGameTime() % 20 == 0) be.setChanged();
+        }
 
         // Skip the (expensive, range-64) monster scan entirely when we can't afford
         // to fire — matches the Gatling/Tesla energy gating and avoids a full
@@ -214,24 +234,31 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             be.monsterCache = java.util.List.of();
         }
 
-        Monster target = hasEnoughEnergy ? be.findClosestMonster(level, pos) : null;
+        Mob target = hasEnoughEnergy ? be.findClosestMonster(level, pos) : null;
 
         if (target == null) {
             be.targetId = -1;
             be.isFiring = false;
             be.warmupTicks = 0;
+            be.clearAimTarget();
         } else {
             be.targetId = target.getId();
+            be.setAimTarget(target.getX(), target.getEyeY(), target.getZ());
             if (be.attackCooldown <= 0) {
                 be.warmupTicks++;
+                if (level.getGameTime() % 20 == 0) be.setChanged();
                 if (be.warmupTicks >= WARMUP_TICKS) {
                     if (be.getEnergyStorage().consumeEnergy(fireCost)) {
-                        be.fireCannon(level, pos, target);
+                        Vec3 impactPos = be.fireCannon(level, pos, target);
                         be.isFiring = true;
                         be.lastFireTime = level.getGameTime();
                         be.attackCooldown = TurretConfig.GRAND_CANNON_COOLDOWN.get();
                         be.warmupTicks = 0;
-                        be.sendFirePacket();
+                        be.setChanged();
+                        be.sendFirePacket(impactPos, List.of(),
+                                be.hasUpgrade(TurretUpgradeType.CLUSTER_SHELLS)
+                                        ? TurretVisualEffects.EFFECT_CLUSTER_SHELLS : 0,
+                                TurretConfig.GRAND_CANNON_EXPLOSION_RADIUS.get().floatValue());
                     }
                 } else {
                     be.isFiring = false;
@@ -241,10 +268,11 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             }
         }
 
-        if (be.targetId != prevTargetId || be.isFiring != prevFiring
-                || be.visualHasEnergy != prevHasEnergy || be.aimDriftedSinceSync()) {
-            be.markUpdated();
+        if (be.targetId != prevTargetId || be.visualHasEnergy != prevHasEnergy
+                || be.aimDriftedSinceSync()) {
+            be.requestThrottledUpdate();
         }
+        be.flushThrottledUpdate();
     }
 
     private boolean isStructureRedstoneBlocked(Level level, BlockPos corePos, Direction facing) {
@@ -256,65 +284,48 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         return false;
     }
 
-    private void fireCannon(Level level, BlockPos pos, Monster target) {
-        Direction facing = getBlockState().getValue(GrandCannonBlock.FACING);
-        Vec3 muzzlePos = new Vec3(
-                pos.getX() + 0.5 + facing.getStepX() * 1.5 + facing.getClockWise().getStepX() * 0.5,
-                pos.getY() + 1.2,
-                pos.getZ() + 0.5 + facing.getStepZ() * 1.5 + facing.getClockWise().getStepZ() * 0.5);
+    private Vec3 fireCannon(Level level, BlockPos pos, Mob target) {
         Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
 
         // Play cannon fire sound (vanilla, lower volume)
         TurretVisualEffects.playTurretSound(level, pos, SoundEvents.GENERIC_EXPLODE, 0.8f, 0.6f, 0.1f);
 
-        // Recoil smoke from barrel
-        Vec3 backDirection = new Vec3(-facing.getStepX(), 0, -facing.getStepZ());
-        TurretVisualEffects.spawnCannonRecoilSmoke(level, muzzlePos, backDirection);
-
-        // Spawn parabolic particle trail (server-side)
-        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            double horizontalDist = Math.sqrt((targetPos.x - muzzlePos.x) * (targetPos.x - muzzlePos.x) + (targetPos.z - muzzlePos.z) * (targetPos.z - muzzlePos.z));
-            double arcHeight = Math.max(6.0, horizontalDist * 0.15);
-            int steps = Math.max(8, Math.min(30, (int) horizontalDist / 2));
-            for (int i = 0; i <= steps; i++) {
-                float t = (float) i / steps;
-                double x = muzzlePos.x + (targetPos.x - muzzlePos.x) * t;
-                double z = muzzlePos.z + (targetPos.z - muzzlePos.z) * t;
-                double baseY = muzzlePos.y + (targetPos.y - muzzlePos.y) * t;
-                double y = baseY + arcHeight * 4.0 * t * (1.0 - t);
-                serverLevel.sendParticles(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, x, y, z, 1, 0.1, 0.1, 0.1, 0.0);
-                if (i % 2 == 0) {
-                    serverLevel.sendParticles(ParticleTypes.FLAME, x, y, z, 1, 0.05, 0.05, 0.05, 0.0);
-                }
-            }
-        }
-
-        // Area damage at target position
+        // Resolve the main blast and all cluster overlaps into one hit per mob.
+        // Applying sub-blasts sequentially makes the first hit's vanilla hurt
+        // cooldown swallow every lower-damage cluster hit.
         double explosionRadius = TurretConfig.GRAND_CANNON_EXPLOSION_RADIUS.get();
+        boolean clusterUpgrade = hasUpgrade(TurretUpgradeType.CLUSTER_SHELLS);
+        double clusterRadius = Math.max(2.0, explosionRadius * 0.45);
+        List<Vec3> clusterCenters = clusterUpgrade
+                ? createClusterCenters(targetPos, clusterRadius)
+                : List.of();
+        double damageExtent = Math.max(explosionRadius, clusterUpgrade ? clusterRadius * 2.0 : 0.0);
         AABB damageArea = new AABB(
-                targetPos.x - explosionRadius, targetPos.y - explosionRadius, targetPos.z - explosionRadius,
-                targetPos.x + explosionRadius, targetPos.y + explosionRadius, targetPos.z + explosionRadius);
+                targetPos.x - damageExtent, targetPos.y - damageExtent, targetPos.z - damageExtent,
+                targetPos.x + damageExtent, targetPos.y + damageExtent, targetPos.z + damageExtent);
 
-        List<Monster> monstersInArea = level.getEntitiesOfClass(Monster.class, damageArea, m -> {
-            if (!m.isAlive()) return false;
-            if (TurretConfig.FRIENDLY_FIRE_PROTECTION.get() && m.hasCustomName()) return false;
-            return m.position().distanceTo(targetPos) <= explosionRadius;
-        });
+        List<Mob> monstersInArea = level.getEntitiesOfClass(Mob.class, damageArea,
+                TurretBlockEntityBase::isEnemyTarget);
 
         float damage = TurretConfig.GRAND_CANNON_DAMAGE.get().floatValue();
-        for (Monster monster : monstersInArea) {
-            // Reset invulnerability to ensure damage is applied
-            monster.invulnerableTime = 0;
-            monster.hurt(level.damageSources().explosion(null, null), damage);
-            if (hasUpgrade(TurretUpgradeType.ARMOR_BREAK)) {
-                float armorCrackDamage = Math.min(18.0f, damage * 0.18f + monster.getArmorValue() * 1.35f);
-                if (armorCrackDamage > 0) {
-                    monster.invulnerableTime = 0;
-                    monster.hurt(level.damageSources().magic(), armorCrackDamage);
+        for (Mob monster : monstersInArea) {
+            Vec3 monsterCenter = monster.position().add(0.0, monster.getBbHeight() * 0.5, 0.0);
+            float resolvedDamage = monsterCenter.distanceTo(targetPos) <= explosionRadius ? damage : 0.0f;
+            for (Vec3 clusterCenter : clusterCenters) {
+                if (monsterCenter.distanceTo(clusterCenter) <= clusterRadius) {
+                    resolvedDamage += damage * 0.35f;
                 }
+            }
+            if (resolvedDamage <= 0.0f) continue;
+
+            if (hasUpgrade(TurretUpgradeType.ARMOR_BREAK)) {
+                float armorCrackDamage = Math.min(18.0f,
+                        resolvedDamage * 0.18f + monster.getArmorValue() * 1.35f);
+                resolvedDamage += armorCrackDamage;
                 monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, 160, 0, true, true));
             }
-            Vec3 knockDir = monster.position().subtract(targetPos).normalize();
+            monster.hurt(level.damageSources().explosion(null, null), resolvedDamage);
+            Vec3 knockDir = monsterCenter.subtract(targetPos).normalize();
             monster.setDeltaMovement(monster.getDeltaMovement().add(knockDir.x * 1.5, 0.5, knockDir.z * 1.5));
             if (hasUpgrade(TurretUpgradeType.SEISMIC_SHOCK)) {
                 monster.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 120, 1, true, true));
@@ -322,58 +333,34 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             }
         }
 
-        if (hasUpgrade(TurretUpgradeType.CLUSTER_SHELLS)) {
-            clusterShells(level, targetPos, explosionRadius, damage * 0.35f);
-        }
-
-        // Enhanced Red Alert style explosion
-        TurretVisualEffects.spawnCannonExplosion(level, targetPos, (float) explosionRadius);
-
-        // Screen shake for nearby players
-        TurretVisualEffects.createScreenShake(level, BlockPos.containing(targetPos), 0.5f, 32);
-
         // Impact sound (vanilla, moderate volume)
         TurretVisualEffects.playTurretSound(level, BlockPos.containing(targetPos),
             SoundEvents.GENERIC_EXPLODE, 1.0f, 0.8f, 0.15f);
+        return targetPos;
     }
 
-    private void clusterShells(Level level, Vec3 targetPos, double mainRadius, float damage) {
-        double clusterRadius = Math.max(2.0, mainRadius * 0.45);
-        Vec3[] offsets = {
-                new Vec3(clusterRadius, 0, 0),
-                new Vec3(-clusterRadius, 0, 0),
-                new Vec3(0, 0, clusterRadius),
-                new Vec3(0, 0, -clusterRadius)
-        };
-
-        for (Vec3 offset : offsets) {
-            Vec3 center = targetPos.add(offset);
-            AABB damageArea = new AABB(center.x - clusterRadius, center.y - clusterRadius, center.z - clusterRadius,
-                    center.x + clusterRadius, center.y + clusterRadius, center.z + clusterRadius);
-            List<Monster> monsters = level.getEntitiesOfClass(Monster.class, damageArea, monster ->
-                    monster.isAlive()
-                            && monster.position().distanceTo(center) <= clusterRadius
-                            && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !monster.hasCustomName()));
-            for (Monster monster : monsters) {
-                monster.invulnerableTime = 0;
-                monster.hurt(level.damageSources().explosion(null, null), damage);
-            }
-            if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-                serverLevel.sendParticles(ParticleTypes.EXPLOSION, center.x, center.y, center.z,
-                        1, 0.0, 0.0, 0.0, 0.0);
-                serverLevel.sendParticles(ParticleTypes.SMOKE, center.x, center.y + 0.25, center.z,
-                        12, clusterRadius * 0.25, 0.35, clusterRadius * 0.25, 0.02);
-            }
-        }
+    private static List<Vec3> createClusterCenters(Vec3 targetPos, double clusterRadius) {
+        return List.of(
+                targetPos.add(clusterRadius, 0.0, 0.0),
+                targetPos.add(-clusterRadius, 0.0, 0.0),
+                targetPos.add(0.0, 0.0, clusterRadius),
+                targetPos.add(0.0, 0.0, -clusterRadius));
     }
 
     @Override
-    protected boolean isValidTarget(Monster monster, Level level, BlockPos selfPos) {
-        if (!monster.isAlive()) return false;
-        if (TurretConfig.FRIENDLY_FIRE_PROTECTION.get() && monster.hasCustomName()) return false;
-        // Grand Cannon uses arcing bombardment - no line-of-sight required.
-        // Only skip targets that are deep underground (no sky access within 4 blocks above).
-        return level.canSeeSky(monster.blockPosition().above(4));
+    protected boolean isValidTarget(Mob monster, Level level, BlockPos selfPos) {
+        if (!isTargetUsable(monster, selfPos)) return false;
+        // The shell follows an arc, so horizontal line of sight is irrelevant, but
+        // it still needs a short clear vertical approach instead of exploding
+        // through a roof simply because the block above that roof can see the sky.
+        BlockPos targetPos = monster.blockPosition();
+        for (int offset = 1; offset <= 4; offset++) {
+            BlockPos approachPos = targetPos.above(offset);
+            if (!level.getBlockState(approachPos).getCollisionShape(level, approachPos).isEmpty()) {
+                return false;
+            }
+        }
+        return level.canSeeSky(targetPos.above(4));
     }
 
     @Override

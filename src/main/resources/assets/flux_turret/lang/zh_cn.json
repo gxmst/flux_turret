@@ -45,8 +45,8 @@
     "message.flux_turret.beacon_warning": "[警告] 检测到外部红石干扰！信标安全锁将在3秒内断开！",
     "message.flux_turret.beacon_resumed": "红石信号已断开，信标恢复战斗运转！",
     "message.flux_turret.beacon_defense_none": "[心灵雷达] 今日净化不足：%d / %d，补给箱合成取消。",
-    "message.flux_turret.beacon_energy_low": "[警告] 心灵能量不足 %d FE！宝箱合成失败！",
-    "message.flux_turret.beacon_no_chest_space": "[警告] 找不到合适的位置放置补给箱！",
+    "message.flux_turret.beacon_energy_low": "[警告] 心灵能量不足，奖励将在储能达到 %d FE 后发放。",
+    "message.flux_turret.beacon_no_chest_space": "[警告] 找不到补给箱位置；奖励会保留到周围腾出空间。",
     "message.flux_turret.beacon_defense_success": "[心灵雷达] 今日防区战役防卫成功！评分：%d。补给箱已合成降下！",
     "message.flux_turret.beacon_affix": "[心灵雷达] 今夜怪潮词缀：%s",
     "message.flux_turret.beacon_stability_drop": "[心灵雷达] 信标稳定值开始下降：%d / %d",
@@ -62,7 +62,9 @@
     "message.flux_turret.upgrade_installed": "已安装升级：%s",
     "message.flux_turret.upgrade_incompatible": "这个模块不适用于当前炮塔。",
     "message.flux_turret.upgrade_already_installed": "这个模块已经安装过了。",
-    "tooltip.flux_turret.upgrade_module.install": "右键对应炮塔安装，潜行右键也可用",
+    "message.flux_turret.upgrade_recovered": "已回收 %d 个升级模块。",
+    "message.flux_turret.upgrade_none_installed": "这座炮塔没有安装升级模块。",
+    "tooltip.flux_turret.upgrade_module.install": "右键对应炮塔安装；潜行空手右键可回收全部模块",
     "upgrade.flux_turret.armor_piercing_rounds": "穿甲弹：加特林对有护甲目标造成额外伤害。",
     "upgrade.flux_turret.fire_rounds": "燃烧弹：加特林命中会点燃目标。",
     "upgrade.flux_turret.slow_rounds": "减速弹：加特林命中会短暂减速目标。",
@@ -107,5 +109,10 @@
     "screen.flux_turret.psychic_beacon.state.active": "防卫中",
     "screen.flux_turret.psychic_beacon.state.failed": "崩溃",
     "screen.flux_turret.psychic_beacon.state.warning": "警告",
-    "screen.flux_turret.psychic_beacon.state.unknown": "未知"
+    "screen.flux_turret.psychic_beacon.state.unknown": "未知",
+    "message.flux_turret.beacon_defense_aborted": "[心灵雷达] 防卫任务已中止，本次不会发放补给箱。",
+    "message.flux_turret.beacon_access_denied": "只有信标所有者、同队成员或服务器管理员可以配置此信标。",
+    "message.flux_turret.beacon_settings_locked": "防卫任务进行中，无法更改信标设置。",
+    "subtitles.flux_turret.prism_shoot": "光凌塔：发射",
+    "death.attack.flux_turret.gatling": "%s 被加特林炮塔撕成了碎片"
 }

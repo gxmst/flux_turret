@@ -8,6 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -26,7 +27,6 @@ import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Vex;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.Container;
-import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -44,6 +44,7 @@ import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.common.util.FakePlayer;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.energy.EnergyStorage;
@@ -59,6 +60,7 @@ import software.bernie.geckolib.core.object.PlayState;
 import software.bernie.geckolib.util.GeckoLibUtil;
 
 import java.util.List;
+import java.util.UUID;
 
 public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEntity, MenuProvider {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
@@ -70,10 +72,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static final int NOTIFY_RADIUS = 50;
     private static final int SPAWN_CLEANUP_RADIUS = 48;
     private static final int NETWORK_NODE_SYNC_CAP = 24;
-
-    // Constants for better code readability
-    private static final int SLEEP_PREVENTION_RADIUS = 100;
-    private static final int DEATH_DETECTION_RADIUS = 32;
+    private static final int DEFENSE_START_TIME = 12000;
+    private static final int DAWN_TIME = 23000;
+    private static final String REWARD_CHEST_ID_TAG = "FluxTurretRewardId";
 
     public static final int STATE_OFFLINE = 0;
     public static final int STATE_IDLE = 1;
@@ -104,17 +105,52 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private int warningTimer = 0;
     private int scanCooldown = 0;
     private int todayKills = 0;
+    // Kept for backwards-compatible NBT reads. Dawn settlement is now driven by
+    // the battle session instead of a narrow world-time window.
     private boolean dawnProcessed = false;
     private boolean enabled = true;
+    @Nullable
+    private UUID ownerUuid;
+    private String ownerName = "";
     private int selectedBuffMask = 1 << BUFF_SPEED;
     private int stabilityNoticeStage = 0;
     private int doctrine = DOCTRINE_GUARD;
     private int activeWaveAffix = AFFIX_NONE;
     private int lastBattleScore = 0;
 
+    // A night is a persisted, server-authoritative session. Snapshotting these
+    // values prevents changing the pyramid or doctrine after an easy fight and
+    // then claiming high-tier rewards.
+    private boolean battleInProgress = false;
+    private boolean battleEligible = false;
+    private int battleThreatLevel = 0;
+    private int battleDoctrine = DOCTRINE_GUARD;
+    private int battleAffix = AFFIX_NONE;
+    private int battleBuffMask = 0;
+    private long lastBattleTick = -1L;
+    private long lastBattleDayTime = -1L;
+    private long lastDefenseDay = Long.MIN_VALUE;
+
+    // Rewards survive chunk unloads and low-energy dawns. They are delivered as
+    // soon as enough FE is available, exactly once.
+    private boolean pendingReward = false;
+    private int pendingThreatLevel = 0;
+    private int pendingKills = 0;
+    private int pendingStability = 0;
+    private int pendingDoctrine = DOCTRINE_GUARD;
+    private int pendingAffix = AFFIX_NONE;
+    private int pendingScore = 0;
+    private boolean pendingEnergyNoticeSent = false;
+    private boolean pendingSpaceNoticeSent = false;
+    @Nullable
+    private UUID pendingRewardId;
+    private boolean pendingEnergyReserved = false;
+    private int pendingDeliveryRetryCooldown = 0;
+
     private int[] cachedTurretCounts = new int[3];
     private java.util.List<BlockPos> cachedNetworkNodes = java.util.List.of();
     private int turretScanCooldown = 0;
+    private long lastTurretScanGameTime = Long.MIN_VALUE;
 
     /**
      * Players within notify range (50 blocks), refreshed on {@link #PLAYER_SCAN_INTERVAL}
@@ -126,7 +162,8 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private java.util.List<Player> cachedNearbyPlayers = java.util.List.of();
     private int playerScanCooldown = 0;
     private static final int PLAYER_SCAN_INTERVAL = 20;
-    private static final double PLAYER_SCAN_RADIUS = 50.0;
+    private static final int TURRET_SCAN_INTERVAL = 200;
+    private static final int MIN_TURRET_SCAN_INTERVAL = 20;
 
     /**
      * Server-side registry of currently-active beacons, maintained each tick.
@@ -136,7 +173,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static final java.util.Set<PsychicBeaconBlockEntity> ACTIVE_BEACONS =
             java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 
-    /** Find an active beacon within {@code range} (Manhattan) of {@code pos} in the given level. */
+    /** Find an active battle beacon within the radial {@code range} of {@code pos}. */
     @Nullable
     public static PsychicBeaconBlockEntity findNearbyActiveBeacon(Level level, BlockPos pos, int range) {
         PsychicBeaconBlockEntity found = null;
@@ -144,12 +181,13 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         while (it.hasNext()) {
             PsychicBeaconBlockEntity beacon = it.next();
             // Prune stale entries opportunistically (unloaded / removed / wrong level).
-            if (beacon.isRemoved() || beacon.level == null || beacon.beaconState != STATE_ACTIVE) {
+            if (beacon.isRemoved() || beacon.level == null || !beacon.battleInProgress
+                    || (beacon.beaconState != STATE_ACTIVE && beacon.beaconState != STATE_WARNING)) {
                 it.remove();
                 continue;
             }
             if (found == null && beacon.level == level
-                    && beacon.worldPosition.distManhattan(pos) <= range) {
+                    && beacon.worldPosition.distSqr(pos) <= (double) range * range) {
                 found = beacon;
             }
         }
@@ -178,18 +216,45 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         ACTIVE_BEACONS.clear();
     }
 
+    public static boolean hasActiveBattle(Level level) {
+        java.util.Iterator<PsychicBeaconBlockEntity> it = ACTIVE_BEACONS.iterator();
+        while (it.hasNext()) {
+            PsychicBeaconBlockEntity beacon = it.next();
+            if (beacon.isRemoved() || beacon.level == null || !beacon.battleInProgress
+                    || (beacon.beaconState != STATE_ACTIVE && beacon.beaconState != STATE_WARNING)) {
+                it.remove();
+                continue;
+            }
+            if (beacon.level == level) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public void setRemoved() {
         super.setRemoved();
         ACTIVE_BEACONS.remove(this);
     }
 
-    private final EnergyStorage energyStorage;
+    @Override
+    public void setChanged() {
+        super.setChanged();
+        if (level == null || level.isClientSide) return;
+        BlockPos upperPos = worldPosition.above();
+        BlockState upperState = level.getBlockState(upperPos);
+        if (upperState.is(ModRegistry.PSYCHIC_BEACON_BLOCK.get())) {
+            level.updateNeighbourForOutputSignal(upperPos, upperState.getBlock());
+        }
+    }
+
+    private final BeaconEnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyCap;
 
     public PsychicBeaconBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.PSYCHIC_BEACON_BE.get(), pos, state);
-        this.energyStorage = new EnergyStorage(TurretConfig.PSYCHIC_BEACON_CAPACITY.get(), MAX_RECEIVE, 0, 0) {
+        this.energyStorage = new BeaconEnergyStorage(TurretConfig.PSYCHIC_BEACON_CAPACITY.get(), MAX_RECEIVE) {
             @Override
             public int receiveEnergy(int maxReceive, boolean simulate) {
                 int received = super.receiveEnergy(maxReceive, simulate);
@@ -198,6 +263,36 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             }
         };
         this.energyCap = LazyOptional.of(() -> this.energyStorage);
+    }
+
+    /**
+     * The public FE capability is input-only, but beacon logic still needs an
+     * internal atomic consume operation. Using EnergyStorage.extractEnergy with
+     * maxExtract=0 made every configured cost a no-op.
+     */
+    private static class BeaconEnergyStorage extends EnergyStorage {
+        BeaconEnergyStorage(int capacity, int maxReceive) {
+            super(capacity, maxReceive, 0, 0);
+        }
+
+        boolean consumeEnergy(int amount) {
+            if (amount <= 0) return true;
+            if (energy < amount) return false;
+            energy -= amount;
+            return true;
+        }
+
+        int receiveManualEnergy(int amount) {
+            int received = Math.min(Math.max(0, amount), capacity - energy);
+            energy += received;
+            return received;
+        }
+
+        @Override
+        public void deserializeNBT(Tag nbt) {
+            super.deserializeNBT(nbt);
+            energy = Math.max(0, Math.min(energy, capacity));
+        }
     }
 
     public int getBeaconState() {
@@ -246,12 +341,58 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return energyStorage;
     }
 
+    /** Manual redstone charging bypasses the external per-call FE input cap once. */
+    public int receiveManualEnergy(int amount) {
+        int received = energyStorage.receiveManualEnergy(amount);
+        if (received > 0) setChanged();
+        return received;
+    }
+
+    public static int getEffectiveDawnCost(int configuredCost, int capacity) {
+        return Math.min(Math.max(0, configuredCost), Math.max(0, capacity));
+    }
+
+    public int getEffectiveDawnCost() {
+        return getEffectiveDawnCost(
+                TurretConfig.PSYCHIC_BEACON_DAWN_COST.get(),
+                energyStorage.getMaxEnergyStored());
+    }
+
     public boolean isVisuallyPowered() {
         return energyStorage.getEnergyStored() > 0;
     }
 
     public boolean isEnabled() {
         return enabled;
+    }
+
+    public boolean isBattleInProgress() {
+        return battleInProgress;
+    }
+
+    public void setOwner(Player player) {
+        if (player == null || player instanceof FakePlayer) return;
+        ownerUuid = player.getUUID();
+        ownerName = player.getScoreboardName();
+        setChanged();
+    }
+
+    public boolean canPlayerConfigure(Player player) {
+        if (player == null || player instanceof FakePlayer) return false;
+        if (ownerUuid == null) {
+            if (!player.level().isClientSide) setOwner(player);
+            return true;
+        }
+        if (ownerUuid.equals(player.getUUID()) || player.hasPermissions(2)) return true;
+        if (level == null) return false;
+
+        Player onlineOwner = level.getPlayerByUUID(ownerUuid);
+        if (onlineOwner != null && player.isAlliedTo(onlineOwner)) return true;
+        if (!ownerName.isEmpty() && player.getTeam() != null) {
+            net.minecraft.world.scores.PlayerTeam ownerTeam = level.getScoreboard().getPlayersTeam(ownerName);
+            return ownerTeam != null && ownerTeam == player.getTeam();
+        }
+        return false;
     }
 
     public void setEnabled(boolean enabled) {
@@ -263,11 +404,11 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     public void incrementTodayKills() {
+        if (!battleInProgress || !battleEligible || beaconState != STATE_ACTIVE) {
+            return;
+        }
         this.todayKills++;
         this.setChanged();
-        if (level != null) {
-            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
-        }
     }
 
     public int[] getCachedTurretCounts() {
@@ -279,6 +420,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     public void cycleDoctrine() {
+        if (battleInProgress) return;
         doctrine = (doctrine + 1) % DOCTRINE_COUNT;
         setChanged();
         if (level != null) {
@@ -287,6 +429,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     public void toggleSelectedBuff(int buffIndex) {
+        if (battleInProgress) return;
         if (buffIndex < 0 || buffIndex >= BUFF_COUNT) return;
         if (!isBuffUnlocked(buffIndex, threatLevel)) return;
 
@@ -344,12 +487,20 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return normalized;
     }
 
-    private void refreshNearbyTurretCounts() {
-        if (level == null) return;
+    private boolean refreshNearbyTurretCounts() {
+        if (level == null) return false;
+        long gameTime = level.getGameTime();
+        if (lastTurretScanGameTime != Long.MIN_VALUE
+                && gameTime >= lastTurretScanGameTime
+                && gameTime - lastTurretScanGameTime < MIN_TURRET_SCAN_INTERVAL) {
+            return false;
+        }
+        lastTurretScanGameTime = gameTime;
 
         int prism = 0;
         int tesla = 0;
         int gatling = 0;
+        boolean collectNetworkNodes = beaconState == STATE_ACTIVE || beaconState == STATE_WARNING;
         java.util.ArrayList<BlockPos> nodes = new java.util.ArrayList<>();
         int cx = worldPosition.getX() >> 4;
         int cz = worldPosition.getZ() >> 4;
@@ -364,22 +515,41 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
                     if (blockEntity instanceof PrismTowerBlockEntity) {
                         prism++;
-                        addNetworkNode(nodes, blockEntity.getBlockPos());
+                        if (collectNetworkNodes) addNetworkNode(nodes, blockEntity.getBlockPos());
                     } else if (blockEntity instanceof TeslaCoilBlockEntity) {
                         tesla++;
-                        addNetworkNode(nodes, blockEntity.getBlockPos());
+                        if (collectNetworkNodes) addNetworkNode(nodes, blockEntity.getBlockPos());
                     } else if (blockEntity instanceof GatlingTurretBlockEntity) {
                         gatling++;
-                        addNetworkNode(nodes, blockEntity.getBlockPos());
+                        if (collectNetworkNodes) addNetworkNode(nodes, blockEntity.getBlockPos());
                     }
                 }
             }
         }
 
+        java.util.List<BlockPos> refreshedNodes = java.util.List.copyOf(nodes);
+        boolean changed = cachedTurretCounts[0] != prism
+                || cachedTurretCounts[1] != tesla
+                || cachedTurretCounts[2] != gatling
+                || !cachedNetworkNodes.equals(refreshedNodes);
         cachedTurretCounts[0] = prism;
         cachedTurretCounts[1] = tesla;
         cachedTurretCounts[2] = gatling;
-        cachedNetworkNodes = java.util.List.copyOf(nodes);
+        cachedNetworkNodes = refreshedNodes;
+        if (changed) {
+            setChanged();
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 2);
+        }
+        return true;
+    }
+
+    private void clearCachedNetworkNodes() {
+        if (cachedNetworkNodes.isEmpty()) return;
+        cachedNetworkNodes = java.util.List.of();
+        setChanged();
+        if (level != null) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 2);
+        }
     }
 
     private static void addNetworkNode(java.util.ArrayList<BlockPos> nodes, BlockPos pos) {
@@ -391,11 +561,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     public long getTimeUntilDawn() {
         if (level == null) return 0;
         long dayTime = level.getDayTime() % 24000;
-        if (dayTime <= 6000) {
-            return 6000 - dayTime;
-        } else {
-            return 24000 - dayTime + 6000;
-        }
+        return dayTime < DAWN_TIME ? DAWN_TIME - dayTime : 0;
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, PsychicBeaconBlockEntity be) {
@@ -408,19 +574,42 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
         if (!be.enabled && be.beaconState != STATE_OFFLINE) {
             if (be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING) {
-                cleanupBeaconSpawnedMonsters(level, pos);
+                abortBattle(level, pos, be, false);
             }
             be.beaconState = STATE_OFFLINE;
         }
 
-        // Refresh the notify-range player cache BEFORE state handling: several state
-        // paths (night-start affix, redstone warning, stability alerts) message players
-        // within the same tick, so the cache must be current when they read it. Otherwise
-        // the first message after a player enters range could fire against a stale list.
-        be.playerScanCooldown--;
-        if (be.playerScanCooldown <= 0) {
+        // Migrate old saves that were already in an active night before battle
+        // sessions were introduced.
+        if ((be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING) && !be.battleInProgress) {
+            be.restoreLegacyBattle(level);
+        }
+
+        // Unloading the beacon while the world keeps advancing must not be a free
+        // way to skip the defense. Server shutdown is safe because gameTime does
+        // not advance while the server is stopped.
+        if (be.battleInProgress && be.hasBattleClockDiscontinuity(level)) {
             be.refreshNearbyPlayers(level);
-            be.playerScanCooldown = PLAYER_SCAN_INTERVAL;
+            abortBattle(level, pos, be, true);
+            be.beaconState = be.enabled && be.energyStorage.getEnergyStored() > 0
+                    ? STATE_IDLE : STATE_OFFLINE;
+        } else if (be.battleInProgress && be.lastBattleTick >= 0
+                && level.getGameTime() - be.lastBattleTick > 200) {
+            be.refreshNearbyPlayers(level);
+            abortBattle(level, pos, be, true);
+            be.beaconState = be.enabled && be.energyStorage.getEnergyStored() > 0
+                    ? STATE_IDLE : STATE_OFFLINE;
+        }
+
+        if (be.battleInProgress || be.pendingReward) {
+            be.playerScanCooldown--;
+            if (be.playerScanCooldown <= 0) {
+                be.refreshNearbyPlayers(level);
+                be.playerScanCooldown = PLAYER_SCAN_INTERVAL;
+            }
+        } else if (!be.cachedNearbyPlayers.isEmpty()) {
+            be.cachedNearbyPlayers = java.util.List.of();
+            be.playerScanCooldown = 0;
         }
 
         switch (be.beaconState) {
@@ -440,18 +629,31 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                 break;
         }
 
-        tickDawnSynthesis(level, pos, be);
+        // Stability failure removes the block entity from inside tickActive.
+        // Never run state synchronization against the stale pre-explosion state.
+        if (be.isRemoved() || level.getBlockEntity(pos) != be) {
+            ACTIVE_BEACONS.remove(be);
+            return;
+        }
 
-        if (be.beaconState == STATE_ACTIVE) {
+        be.tryDeliverPendingReward();
+
+        if (be.battleInProgress
+                && (be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING)) {
             ACTIVE_BEACONS.add(be);
         } else {
             ACTIVE_BEACONS.remove(be);
         }
 
-        be.turretScanCooldown--;
-        if (be.turretScanCooldown <= 0) {
-            be.refreshNearbyTurretCounts();
-            be.turretScanCooldown = 60;
+        if (be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING) {
+            be.turretScanCooldown--;
+            if (be.turretScanCooldown <= 0) {
+                be.turretScanCooldown = be.refreshNearbyTurretCounts()
+                        ? TURRET_SCAN_INTERVAL : MIN_TURRET_SCAN_INTERVAL;
+            }
+        } else {
+            be.turretScanCooldown = 0;
+            be.clearCachedNetworkNodes();
         }
 
         if (be.beaconState != prevState) {
@@ -459,6 +661,29 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             be.setChanged();
             level.sendBlockUpdated(pos, state, state, 3);
         }
+
+        // Persist continuously-changing energy/timer/stability fields at a sane
+        // cadence without sending full block-entity packets every tick.
+        if (level.getGameTime() % 20 == 0
+                && (be.beaconState == STATE_IDLE || be.beaconState == STATE_ACTIVE
+                    || be.beaconState == STATE_WARNING || be.pendingReward)) {
+            be.setChanged();
+            be.lastBattleTick = be.battleInProgress ? level.getGameTime() : be.lastBattleTick;
+            be.lastBattleDayTime = be.battleInProgress ? level.getDayTime() : be.lastBattleDayTime;
+        }
+    }
+
+    private boolean hasBattleClockDiscontinuity(Level level) {
+        return isBattleClockDiscontinuous(
+                lastBattleTick, lastBattleDayTime, level.getGameTime(), level.getDayTime());
+    }
+
+    static boolean isBattleClockDiscontinuous(
+            long previousGameTime, long previousDayTime, long gameTime, long dayTime) {
+        if (previousGameTime < 0 || previousDayTime < 0) return true;
+        long gameDelta = gameTime - previousGameTime;
+        long dayDelta = dayTime - previousDayTime;
+        return gameDelta < 0 || dayDelta < 0 || dayDelta > gameDelta + 5;
     }
 
     private void updateLitState(Level level, BlockPos pos, BlockState state) {
@@ -493,13 +718,23 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             return;
         }
 
-        be.energyStorage.extractEnergy(Math.min(TurretConfig.PSYCHIC_BEACON_DRAIN_RATE.get(), be.energyStorage.getEnergyStored()), false);
+        int idleDrain = Math.min(TurretConfig.PSYCHIC_BEACON_DRAIN_RATE.get(), be.energyStorage.getEnergyStored());
+        if (!be.energyStorage.consumeEnergy(idleDrain)) {
+            be.beaconState = STATE_OFFLINE;
+            return;
+        }
 
         be.scanCooldown--;
         if (be.scanCooldown <= 0) {
+            int previousThreat = be.threatLevel;
+            int previousBuffMask = be.selectedBuffMask;
             be.threatLevel = be.scanPyramidLevel(level, pos);
             be.selectedBuffMask = normalizeSelectedBuffMask(be.selectedBuffMask, be.threatLevel);
             be.scanCooldown = 200;
+            if (be.threatLevel != previousThreat || be.selectedBuffMask != previousBuffMask) {
+                be.setChanged();
+                level.sendBlockUpdated(pos, be.getBlockState(), be.getBlockState(), 2);
+            }
         }
 
         if (be.threatLevel > 0 && level.getGameTime() % 100 == 0) {
@@ -507,7 +742,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         long dayTime = level.getDayTime() % 24000;
-        if (dayTime >= 13000 && dayTime < 23000) {
+        if (!be.pendingReward && be.threatLevel > 0
+                && be.lastDefenseDay != Math.floorDiv(level.getDayTime(), 24000L)
+                && dayTime >= DEFENSE_START_TIME && dayTime < DAWN_TIME) {
             be.beaconState = STATE_ACTIVE;
             beginNightDefense(level, pos, be);
             be.spawnTimer = TurretConfig.PSYCHIC_BEACON_SPAWN_INTERVAL.get() / 2;
@@ -516,14 +753,18 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
     private static void tickActive(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
         if (be.energyStorage.getEnergyStored() <= 0) {
-            cleanupBeaconSpawnedMonsters(level, pos);
+            abortBattle(level, pos, be, true);
             be.beaconState = STATE_OFFLINE;
             return;
         }
 
         if (level.hasNeighborSignal(pos)) {
+            be.warningTimer = Math.max(0, be.warningTimer - 1);
+            if (be.warningTimer <= 0) {
+                emergencyShutdown(level, pos, be);
+                return;
+            }
             be.beaconState = STATE_WARNING;
-            be.warningTimer = 60;
             Player nearest = be.findNearestPlayer();
             if (nearest != null) {
                 nearest.displayClientMessage(
@@ -535,11 +776,26 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             return;
         }
 
-        be.energyStorage.extractEnergy(Math.min(TurretConfig.PSYCHIC_BEACON_DRAIN_RATE.get(), be.energyStorage.getEnergyStored()), false);
+        int activeDrain = Math.min(TurretConfig.PSYCHIC_BEACON_DRAIN_RATE.get(), be.energyStorage.getEnergyStored());
+        if (!be.energyStorage.consumeEnergy(activeDrain)) {
+            abortBattle(level, pos, be, true);
+            be.beaconState = STATE_OFFLINE;
+            return;
+        }
+        be.lastBattleTick = level.getGameTime();
+        be.lastBattleDayTime = level.getDayTime();
 
         long dayTime = level.getDayTime() % 24000;
-        if (dayTime < 13000 || dayTime >= 23000) {
+        if ((dayTime < DEFENSE_START_TIME || dayTime >= DAWN_TIME || level.getGameTime() % 200 == 0)
+                && be.scanPyramidLevel(level, pos) < be.battleThreatLevel) {
+            abortBattle(level, pos, be, true);
+            be.beaconState = STATE_IDLE;
+            return;
+        }
+
+        if (dayTime < DEFENSE_START_TIME || dayTime >= DAWN_TIME) {
             cleanupBeaconSpawnedMonsters(level, pos);
+            completeNightDefense(be);
             be.beaconState = STATE_IDLE;
             be.activeWaveAffix = AFFIX_NONE;
             be.spawnTimer = 0;
@@ -547,14 +803,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         if (level.getGameTime() % 20 == 0) {
-            tickStability(level, pos, be);
+            if (!tickStability(level, pos, be)) return;
         }
 
-        if (be.threatLevel > 0 && level.getGameTime() % 100 == 0) {
+        if (be.battleThreatLevel > 0 && level.getGameTime() % 100 == 0) {
             broadcastBuffs(level, pos, be);
         }
 
-        if (be.doctrine == DOCTRINE_CONTROL && level.getGameTime() % 60 == 0) {
+        if (be.battleDoctrine == DOCTRINE_CONTROL && level.getGameTime() % 60 == 0) {
             applyControlDoctrine(level, pos, be);
         }
 
@@ -566,9 +822,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private static void tickWarning(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
+        be.lastBattleTick = level.getGameTime();
+        be.lastBattleDayTime = level.getDayTime();
         if (!level.hasNeighborSignal(pos)) {
             be.beaconState = STATE_ACTIVE;
-            be.warningTimer = 0;
             Player nearest = be.findNearestPlayer();
             if (nearest != null) {
                 nearest.displayClientMessage(
@@ -586,7 +843,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
     }
 
-    private static void tickStability(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
+    private static boolean tickStability(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
         AABB checkArea = new AABB(pos).inflate(1.5);
         List<net.minecraft.world.entity.monster.Monster> nearbyMonsters = level.getEntitiesOfClass(
                 net.minecraft.world.entity.monster.Monster.class, checkArea);
@@ -598,23 +855,131 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             if (be.stability <= 0) {
                 be.stability = 0;
                 failAndExplode(level, pos, be);
+                return false;
             }
         }
+        return true;
     }
 
     private static void beginNightDefense(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        if (be.activeWaveAffix != AFFIX_NONE) return;
-        be.activeWaveAffix = 1 + level.random.nextInt(AFFIX_COUNT - 1);
+        if (be.battleInProgress) return;
+        be.battleInProgress = true;
+        be.lastDefenseDay = Math.floorDiv(level.getDayTime(), 24000L);
+        be.battleEligible = true;
+        be.battleThreatLevel = Math.max(1, Math.min(4, be.threatLevel));
+        be.battleDoctrine = Math.max(0, Math.min(DOCTRINE_COUNT - 1, be.doctrine));
+        be.battleAffix = 1 + level.random.nextInt(AFFIX_COUNT - 1);
+        be.battleBuffMask = normalizeSelectedBuffMask(be.selectedBuffMask, be.battleThreatLevel);
+        be.activeWaveAffix = be.battleAffix;
+        be.todayKills = 0;
+        be.stability = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
+        be.stabilityNoticeStage = 0;
+        be.warningTimer = 60;
+        be.lastBattleTick = level.getGameTime();
+        be.lastBattleDayTime = level.getDayTime();
+        be.refreshNearbyPlayers(level);
+        be.playerScanCooldown = PLAYER_SCAN_INTERVAL;
+        be.setChanged();
         be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_affix",
                 Component.translatable(getAffixTranslationKey(be.activeWaveAffix))).withStyle(net.minecraft.ChatFormatting.LIGHT_PURPLE));
     }
 
+    private void restoreLegacyBattle(Level level) {
+        battleInProgress = true;
+        lastDefenseDay = Math.floorDiv(level.getDayTime(), 24000L);
+        battleEligible = true;
+        battleThreatLevel = Math.max(1, Math.min(4, threatLevel));
+        battleDoctrine = Math.max(0, Math.min(DOCTRINE_COUNT - 1, doctrine));
+        battleAffix = activeWaveAffix == AFFIX_NONE
+                ? 1 + level.random.nextInt(AFFIX_COUNT - 1)
+                : activeWaveAffix;
+        battleBuffMask = normalizeSelectedBuffMask(selectedBuffMask, battleThreatLevel);
+        activeWaveAffix = battleAffix;
+        if (warningTimer <= 0) warningTimer = 60;
+        lastBattleTick = level.getGameTime();
+        lastBattleDayTime = level.getDayTime();
+        setChanged();
+    }
+
+    private static void abortBattle(Level level, BlockPos pos, PsychicBeaconBlockEntity be, boolean notify) {
+        cleanupBeaconSpawnedMonsters(level, pos);
+        boolean wasRunning = be.battleInProgress;
+        be.battleInProgress = false;
+        be.battleEligible = false;
+        be.battleThreatLevel = 0;
+        be.battleDoctrine = DOCTRINE_GUARD;
+        be.battleAffix = AFFIX_NONE;
+        be.battleBuffMask = 0;
+        be.activeWaveAffix = AFFIX_NONE;
+        be.todayKills = 0;
+        be.spawnTimer = 0;
+        be.warningTimer = 0;
+        be.stability = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
+        be.stabilityNoticeStage = 0;
+        be.lastBattleTick = -1L;
+        be.lastBattleDayTime = -1L;
+        be.setChanged();
+        if (notify && wasRunning) {
+            be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_defense_aborted")
+                    .withStyle(net.minecraft.ChatFormatting.RED));
+        }
+    }
+
+    private static void completeNightDefense(PsychicBeaconBlockEntity be) {
+        if (!be.battleInProgress) return;
+
+        int threat = be.battleThreatLevel;
+        int kills = be.todayKills;
+        int remainingStability = Math.max(0, be.stability);
+        int affix = be.battleAffix;
+        int battleRoute = be.battleDoctrine;
+        int requiredKills = getRequiredKillsForThreatLevel(threat);
+        int score = calculateBattleScore(threat, kills, remainingStability, affix, battleRoute);
+        be.lastBattleScore = score;
+
+        if (be.battleEligible && kills >= requiredKills) {
+            be.pendingReward = true;
+            be.pendingThreatLevel = threat;
+            be.pendingKills = kills;
+            be.pendingStability = remainingStability;
+            be.pendingDoctrine = battleRoute;
+            be.pendingAffix = affix;
+            be.pendingScore = score;
+            be.pendingEnergyNoticeSent = false;
+            be.pendingSpaceNoticeSent = false;
+            be.pendingRewardId = UUID.randomUUID();
+            be.pendingEnergyReserved = false;
+            be.pendingDeliveryRetryCooldown = 0;
+        } else if (be.level != null) {
+            be.level.playSound(null, be.worldPosition, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0f, 0.8f);
+            be.displayMessageToNearbyPlayers(
+                    Component.translatable("message.flux_turret.beacon_defense_none", kills, requiredKills)
+                            .withStyle(net.minecraft.ChatFormatting.YELLOW));
+        }
+
+        be.battleInProgress = false;
+        be.battleEligible = false;
+        be.battleThreatLevel = 0;
+        be.battleDoctrine = DOCTRINE_GUARD;
+        be.battleAffix = AFFIX_NONE;
+        be.battleBuffMask = 0;
+        be.lastBattleTick = -1L;
+        be.lastBattleDayTime = -1L;
+        be.todayKills = 0;
+        be.activeWaveAffix = AFFIX_NONE;
+        be.warningTimer = 0;
+        be.stability = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
+        be.stabilityNoticeStage = 0;
+        be.setChanged();
+    }
+
     private static void applyControlDoctrine(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        int radius = 8 + Math.max(0, be.threatLevel) * 4;
+        int effectiveThreat = be.battleInProgress ? be.battleThreatLevel : be.threatLevel;
+        int radius = 8 + Math.max(0, effectiveThreat) * 4;
         AABB area = new AABB(pos).inflate(radius);
         List<Monster> monsters = level.getEntitiesOfClass(Monster.class, area, monster -> monster.isAlive() && !monster.isRemoved());
         for (Monster monster : monsters) {
-            monster.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 120, be.threatLevel >= 3 ? 1 : 0, true, true));
+            monster.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 120, effectiveThreat >= 3 ? 1 : 0, true, true));
             monster.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 120, 0, true, true));
         }
     }
@@ -640,92 +1005,108 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
     }
 
-    private static void tickDawnSynthesis(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        long dayTime = level.getDayTime() % 24000;
-        if (!be.dawnProcessed && dayTime >= 6000 && dayTime < 6100) {
-            be.performDawnSynthesis();
-            be.dawnProcessed = true;
-            be.setChanged();
-        }
-        if (dayTime >= 6100 || dayTime < 6000) {
-            be.dawnProcessed = false;
-        }
-    }
-
+    /** Backwards-compatible public hook: now attempts delivery of an earned pending reward. */
     public void performDawnSynthesis() {
-        int requiredKills = getRequiredKillsForThreatLevel(this.threatLevel);
-        int score = calculateBattleScore(this.threatLevel, this.todayKills, this.stability, this.activeWaveAffix, this.doctrine);
-        this.lastBattleScore = score;
-        if (this.todayKills < requiredKills) {
-            if (level != null) {
-                level.playSound(null, worldPosition, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0f, 0.8f);
-                displayMessageToNearbyPlayers(
-                    Component.translatable("message.flux_turret.beacon_defense_none", this.todayKills, requiredKills)
-                        .withStyle(net.minecraft.ChatFormatting.YELLOW)
-                );
-            }
-            this.todayKills = 0;
-            this.activeWaveAffix = AFFIX_NONE;
-            setChanged();
-            return;
-        }
-
-        if (this.energyStorage.getEnergyStored() < TurretConfig.PSYCHIC_BEACON_DAWN_COST.get()) {
-            if (level != null) {
-                level.playSound(null, worldPosition, SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 1.0f, 0.5f);
-                displayMessageToNearbyPlayers(
-                    Component.translatable("message.flux_turret.beacon_energy_low", TurretConfig.PSYCHIC_BEACON_DAWN_COST.get())
-                        .withStyle(net.minecraft.ChatFormatting.RED)
-                );
-            }
-            this.todayKills = 0;
-            this.activeWaveAffix = AFFIX_NONE;
-            setChanged();
-            return;
-        }
-
-        this.energyStorage.extractEnergy(TurretConfig.PSYCHIC_BEACON_DAWN_COST.get(), false);
-
-        if (level != null) {
-            BlockPos chestPos = findChestPos(level, worldPosition);
-            if (chestPos != null) {
-                level.setBlock(chestPos, Blocks.CHEST.defaultBlockState(), 3);
-                BlockEntity chestBe = level.getBlockEntity(chestPos);
-                if (chestBe instanceof ChestBlockEntity chest) {
-                    fillVictoryChestDynamic(level, worldPosition, chest, this.threatLevel, this.todayKills, score, this.doctrine);
-                }
-            } else {
-                // No room for a chest: don't let the player lose a won night's loot.
-                // Fill a temporary container and drop its contents above the beacon.
-                SimpleContainer overflow = new SimpleContainer(27);
-                fillVictoryChestDynamic(level, worldPosition, overflow, this.threatLevel, this.todayKills, score, this.doctrine);
-                dropContainerContents(level, worldPosition, overflow);
-                displayMessageToNearbyPlayers(
-                    Component.translatable("message.flux_turret.beacon_no_chest_space")
-                        .withStyle(net.minecraft.ChatFormatting.RED)
-                );
-            }
-
-            level.playSound(null, worldPosition, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.BLOCKS, 1.0f, 1.0f);
-            displayMessageToNearbyPlayers(
-                Component.translatable("message.flux_turret.beacon_defense_success", score)
-                    .withStyle(net.minecraft.ChatFormatting.AQUA)
-            );
-        }
-
-        this.todayKills = 0;
-        this.stability = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
-        this.stabilityNoticeStage = 0;
-        this.activeWaveAffix = AFFIX_NONE;
-        setChanged();
-        if (level != null) {
-            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
-        }
+        tryDeliverPendingReward();
     }
 
-    private void displayMessageToNearbyPlayers(Component message) {
-        if (level == null) return;
-        notifyNearbyPlayers(message);
+    private void tryDeliverPendingReward() {
+        if (!pendingReward || level == null || level.isClientSide) return;
+        if (pendingRewardId == null) {
+            pendingRewardId = UUID.randomUUID();
+            setChanged();
+        }
+        if (findDeliveredRewardChest(level, worldPosition, pendingRewardId) != null) {
+            clearPendingReward();
+            setChanged();
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 2);
+            return;
+        }
+
+        int cost = getEffectiveDawnCost();
+        if (!pendingEnergyReserved && energyStorage.getEnergyStored() < cost) {
+            if (!pendingEnergyNoticeSent) {
+                boolean notified = displayMessageToNearbyPlayers(
+                        Component.translatable("message.flux_turret.beacon_energy_low", cost)
+                                .withStyle(net.minecraft.ChatFormatting.RED));
+                if (notified) {
+                    level.playSound(null, worldPosition, SoundEvents.BEACON_DEACTIVATE,
+                            SoundSource.BLOCKS, 1.0f, 0.5f);
+                    pendingEnergyNoticeSent = true;
+                    setChanged();
+                }
+            }
+            return;
+        }
+        if (!pendingEnergyReserved) {
+            if (!energyStorage.consumeEnergy(cost)) return;
+            pendingEnergyReserved = true;
+            setChanged();
+        }
+
+        if (pendingDeliveryRetryCooldown > 0) {
+            pendingDeliveryRetryCooldown--;
+            return;
+        }
+
+        BlockPos chestPos = findChestPos(level, worldPosition);
+        if (chestPos == null) {
+            pendingDeliveryRetryCooldown = PLAYER_SCAN_INTERVAL;
+            if (!pendingSpaceNoticeSent) {
+                boolean notified = displayMessageToNearbyPlayers(
+                        Component.translatable("message.flux_turret.beacon_no_chest_space")
+                                .withStyle(net.minecraft.ChatFormatting.RED));
+                if (notified) {
+                    pendingSpaceNoticeSent = true;
+                    setChanged();
+                }
+            }
+            return;
+        }
+
+        if (!level.setBlock(chestPos, Blocks.CHEST.defaultBlockState(), 3)) {
+            pendingDeliveryRetryCooldown = PLAYER_SCAN_INTERVAL;
+            return;
+        }
+        BlockEntity chestBe = level.getBlockEntity(chestPos);
+        if (!(chestBe instanceof ChestBlockEntity chest)) {
+            level.removeBlock(chestPos, false);
+            pendingDeliveryRetryCooldown = PLAYER_SCAN_INTERVAL;
+            return;
+        }
+
+        chest.getPersistentData().putUUID(REWARD_CHEST_ID_TAG, pendingRewardId);
+        fillVictoryChestDynamic(level, worldPosition, chest, pendingThreatLevel, pendingKills,
+                pendingScore, pendingDoctrine);
+        chest.setChanged();
+
+        level.playSound(null, worldPosition, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.BLOCKS, 1.0f, 1.0f);
+        displayMessageToNearbyPlayers(
+                Component.translatable("message.flux_turret.beacon_defense_success", pendingScore)
+                        .withStyle(net.minecraft.ChatFormatting.AQUA));
+
+        clearPendingReward();
+        setChanged();
+        level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 2);
+    }
+
+    private void clearPendingReward() {
+        pendingReward = false;
+        pendingThreatLevel = 0;
+        pendingKills = 0;
+        pendingStability = 0;
+        pendingDoctrine = DOCTRINE_GUARD;
+        pendingAffix = AFFIX_NONE;
+        pendingScore = 0;
+        pendingEnergyNoticeSent = false;
+        pendingSpaceNoticeSent = false;
+        pendingRewardId = null;
+        pendingEnergyReserved = false;
+        pendingDeliveryRetryCooldown = 0;
+    }
+
+    private boolean displayMessageToNearbyPlayers(Component message) {
+        return notifyNearbyPlayers(message);
     }
 
     /**
@@ -742,46 +1123,55 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
      * The range re-check matters because the cache is up to {@link #PLAYER_SCAN_INTERVAL}
      * ticks stale — a player may have walked out (or logged out) since the last scan.
      */
-    private void notifyNearbyPlayers(Component message) {
-        if (level == null) return;
+    private boolean notifyNearbyPlayers(Component message) {
+        if (level == null) return false;
         double radiusSq = (double) NOTIFY_RADIUS * NOTIFY_RADIUS;
+        boolean notified = false;
         for (int i = 0; i < cachedNearbyPlayers.size(); i++) {
             Player player = cachedNearbyPlayers.get(i);
             if (player == null || !player.isAlive() || player.level() != level) continue;
             if (player.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > radiusSq) continue;
             player.displayClientMessage(message, true);
+            notified = true;
         }
+        return notified;
     }
 
     private static void spawnWave(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
         AABB countArea = new AABB(pos).inflate(MONSTER_COUNT_RADIUS);
         List<Monster> existingMonsters = level.getEntitiesOfClass(Monster.class, countArea);
+        int eventMonsterCount = 0;
+        for (Monster monster : existingMonsters) {
+            if (isBeaconSpawn(monster, pos)) {
+                eventMonsterCount++;
+            }
+        }
         int maxMonsters = TurretConfig.PSYCHIC_BEACON_MAX_MONSTERS.get()
-                + (be.doctrine == DOCTRINE_LURE ? 4 : 0)
-                + (be.activeWaveAffix == AFFIX_SWARM ? 3 : 0);
-        int remaining = maxMonsters - existingMonsters.size();
+                + (be.battleDoctrine == DOCTRINE_LURE ? 4 : 0)
+                + (be.battleAffix == AFFIX_SWARM ? 3 : 0);
+        int remaining = maxMonsters - eventMonsterCount;
         if (remaining <= 0) return;
 
-        int tl = Math.max(0, Math.min(4, be.threatLevel));
+        int tl = Math.max(1, Math.min(4, be.battleThreatLevel));
         RandomSource random = level.random;
         int waveBudget = Math.min(remaining, 2 + tl
-                + (be.doctrine == DOCTRINE_LURE ? 1 : 0)
-                + (be.activeWaveAffix == AFFIX_SWARM ? 2 : 0)
-                + (be.activeWaveAffix == AFFIX_RUSH || be.activeWaveAffix == AFFIX_OVERLOAD ? 1 : 0));
+                + (be.battleDoctrine == DOCTRINE_LURE ? 1 : 0)
+                + (be.battleAffix == AFFIX_SWARM ? 2 : 0)
+                + (be.battleAffix == AFFIX_RUSH || be.battleAffix == AFFIX_OVERLOAD ? 1 : 0));
 
         int huskCount = Math.min(waveBudget, 1 + random.nextInt(2) + (tl >= 3 ? 1 : 0)
-                + (be.activeWaveAffix == AFFIX_SWARM ? 1 : 0));
-        waveBudget -= spawnHusks(level, pos, random, huskCount, tl, be.activeWaveAffix);
+                + (be.battleAffix == AFFIX_SWARM ? 1 : 0));
+        waveBudget -= spawnHusks(level, pos, random, huskCount, tl, be.battleAffix);
         if (waveBudget <= 0) return;
 
         if (tl >= 1) {
-            int spiderCount = Math.min(waveBudget, (tl >= 3 ? 2 : 1) + (be.activeWaveAffix == AFFIX_RUSH ? 1 : 0));
-            waveBudget -= spawnSpiders(level, pos, random, spiderCount, tl, be.activeWaveAffix);
+            int spiderCount = Math.min(waveBudget, (tl >= 3 ? 2 : 1) + (be.battleAffix == AFFIX_RUSH ? 1 : 0));
+            waveBudget -= spawnSpiders(level, pos, random, spiderCount, tl, be.battleAffix);
             if (waveBudget <= 0) return;
         }
 
-        if (tl >= 3 && random.nextFloat() < (be.activeWaveAffix == AFFIX_RUSH ? 0.85f : 0.65f)) {
-            waveBudget -= spawnVexes(level, pos, random, Math.min(waveBudget, 1), tl, be.activeWaveAffix);
+        if (tl >= 3 && random.nextFloat() < (be.battleAffix == AFFIX_RUSH ? 0.85f : 0.65f)) {
+            waveBudget -= spawnVexes(level, pos, random, Math.min(waveBudget, 1), tl, be.battleAffix);
             if (waveBudget <= 0) return;
         }
 
@@ -791,7 +1181,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         if (be.stability < TurretConfig.PSYCHIC_BEACON_STABILITY.get() / 2 && random.nextFloat() < 0.5f) {
-            spawnHusks(level, pos, random, Math.min(waveBudget, 1), tl, be.activeWaveAffix);
+            spawnHusks(level, pos, random, Math.min(waveBudget, 1), tl, be.battleAffix);
         }
     }
 
@@ -806,7 +1196,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             applyEliteHealth(husk, getGroundEliteHealth(threatLevel, random) * getAffixHealthMultiplier(affix));
             applySpawnAffix(husk, affix);
             markBeaconSpawn(husk, pos);
-            husk.goalSelector.addGoal(1, new MoveToBeaconGoal(husk, pos, 1.0D));
+            ensureMoveToBeaconGoal(husk, pos);
             level.addFreshEntity(husk);
             spawned++;
         }
@@ -824,7 +1214,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             applyEliteHealth(spider, getGroundEliteHealth(threatLevel, random) * getAffixHealthMultiplier(affix));
             applySpawnAffix(spider, affix);
             markBeaconSpawn(spider, pos);
-            spider.goalSelector.addGoal(1, new MoveToBeaconGoal(spider, pos, 1.0D));
+            ensureMoveToBeaconGoal(spider, pos);
             level.addFreshEntity(spider);
             spawned++;
         }
@@ -843,7 +1233,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             applyEliteHealth(vex, (threatLevel >= 4 ? 60.0F : 40.0F) * getAffixHealthMultiplier(affix));
             applySpawnAffix(vex, affix);
             markBeaconSpawn(vex, pos);
-            vex.goalSelector.addGoal(1, new MoveToBeaconGoal(vex, pos, 1.0D));
+            ensureMoveToBeaconGoal(vex, pos);
             level.addFreshEntity(vex);
             spawned++;
         }
@@ -859,7 +1249,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         creeper.getEntityData().set(Creeper.DATA_IS_POWERED, true);
         applyEliteHealth(creeper, 100.0F);
         markBeaconSpawn(creeper, pos);
-        creeper.goalSelector.addGoal(1, new MoveToBeaconGoal(creeper, pos, 1.0D));
+        ensureMoveToBeaconGoal(creeper, pos);
         level.addFreshEntity(creeper);
         return 1;
     }
@@ -909,6 +1299,15 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return BlockPos.of(data.getLong(BEACON_POS_TAG));
     }
 
+    public static void ensureMoveToBeaconGoal(Mob mob, BlockPos beaconPos) {
+        boolean alreadyInstalled = mob.goalSelector.getAvailableGoals().stream()
+                .anyMatch(wrapped -> wrapped.getGoal() instanceof MoveToBeaconGoal goal
+                        && goal.getTargetPos().equals(beaconPos));
+        if (!alreadyInstalled) {
+            mob.goalSelector.addGoal(1, new MoveToBeaconGoal(mob, beaconPos, 1.0D));
+        }
+    }
+
     private static boolean isBeaconSpawn(Mob mob, BlockPos beaconPos) {
         BlockPos taggedPos = getBeaconSpawnPos(mob);
         return taggedPos != null && taggedPos.equals(beaconPos);
@@ -937,6 +1336,8 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             double dist = 15 + random.nextDouble() * 10;
             int x = beaconPos.getX() + (int) Math.round(Math.cos(angle) * dist);
             int z = beaconPos.getZ() + (int) Math.round(Math.sin(angle) * dist);
+            BlockPos columnPos = new BlockPos(x, beaconPos.getY(), z);
+            if (!level.hasChunkAt(columnPos)) continue;
             int y = level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING, x, z);
             BlockPos candidate = new BlockPos(x, y, z);
             if (level.getBlockState(candidate).isAir() && level.getBlockState(candidate.below()).isSolidRender(level, candidate.below())) {
@@ -947,9 +1348,13 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private static void broadcastBuffs(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        int radius = (be.threatLevel + 1) * 10 + (be.doctrine == DOCTRINE_GUARD ? 10 : 0);
-        int selected = normalizeSelectedBuffMask(be.selectedBuffMask, be.threatLevel);
-        if (selected != be.selectedBuffMask) {
+        int effectiveThreat = be.battleInProgress ? be.battleThreatLevel : be.threatLevel;
+        int effectiveDoctrine = be.battleInProgress ? be.battleDoctrine : be.doctrine;
+        int selected = be.battleInProgress
+                ? be.battleBuffMask
+                : normalizeSelectedBuffMask(be.selectedBuffMask, effectiveThreat);
+        int radius = (effectiveThreat + 1) * 10 + (effectiveDoctrine == DOCTRINE_GUARD ? 10 : 0);
+        if (!be.battleInProgress && selected != be.selectedBuffMask) {
             be.selectedBuffMask = selected;
             be.setChanged();
         }
@@ -958,7 +1363,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         AABB area = new AABB(pos).inflate(radius);
         List<Player> players = level.getEntitiesOfClass(Player.class, area);
         for (Player player : players) {
-            applySelectedBuffs(player, selected, be.threatLevel, be.doctrine);
+            applySelectedBuffs(player, selected, effectiveThreat, effectiveDoctrine);
         }
     }
 
@@ -1010,9 +1415,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private static void failAndExplode(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
+        abortBattle(level, pos, be, false);
+        be.clearPendingReward();
         be.beaconState = STATE_FAILED;
-        be.todayKills = 0;
-        cleanupBeaconSpawnedMonsters(level, pos);
         be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_stability_failure")
                 .withStyle(net.minecraft.ChatFormatting.DARK_RED));
 
@@ -1048,26 +1453,32 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private static void emergencyShutdown(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
-        AABB clearArea = new AABB(pos).inflate(SPAWN_CLEANUP_RADIUS);
-        List<Monster> monsters = level.getEntitiesOfClass(Monster.class, clearArea);
-        for (Monster monster : monsters) {
-            if (isBeaconSpawn(monster, pos) || hasMoveToBeaconGoal(monster, pos)) {
-                monster.discard();
-            }
-        }
-
-        int cost = TurretConfig.PSYCHIC_BEACON_DAWN_COST.get();
-        if (be.energyStorage.getEnergyStored() >= cost) {
-            be.energyStorage.extractEnergy(cost, false);
-        }
+        abortBattle(level, pos, be, true);
+        int cost = be.getEffectiveDawnCost();
+        be.energyStorage.consumeEnergy(Math.min(cost, be.energyStorage.getEnergyStored()));
 
         be.beaconState = STATE_OFFLINE;
-        be.stability = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
-        be.stabilityNoticeStage = 0;
-        be.spawnTimer = 0;
-        be.warningTimer = 0;
         be.setChanged();
         level.sendBlockUpdated(pos, be.getBlockState(), be.getBlockState(), 3);
+    }
+
+    @Nullable
+    private static BlockPos findDeliveredRewardChest(Level level, BlockPos beaconPos, UUID rewardId) {
+        for (int dy = -1; dy <= 2; dy++) {
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    BlockPos candidate = beaconPos.offset(dx, dy, dz);
+                    if (!isInSameChunk(beaconPos, candidate)) continue;
+                    BlockEntity blockEntity = level.getBlockEntity(candidate);
+                    if (blockEntity instanceof ChestBlockEntity chest
+                            && chest.getPersistentData().hasUUID(REWARD_CHEST_ID_TAG)
+                            && rewardId.equals(chest.getPersistentData().getUUID(REWARD_CHEST_ID_TAG))) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     @Nullable
@@ -1076,7 +1487,8 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         for (int dy = 1; dy >= -1; dy--) {
             for (Direction dir : Direction.Plane.HORIZONTAL) {
                 BlockPos candidate = pos.relative(dir).above(dy);
-                if (canPlaceChestAt(level, candidate)
+                if (isInSameChunk(pos, candidate)
+                        && canPlaceChestAt(level, candidate)
                         && level.getBlockState(candidate.below()).isSolidRender(level, candidate.below())) {
                     return candidate;
                 }
@@ -1088,7 +1500,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dz == 0 && dy == 0) continue;
                     BlockPos candidate = pos.offset(dx, dy, dz);
-                    if (canPlaceChestAt(level, candidate)) {
+                    if (isInSameChunk(pos, candidate) && canPlaceChestAt(level, candidate)) {
                         return candidate;
                     }
                 }
@@ -1097,20 +1509,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return null;
     }
 
+    private static boolean isInSameChunk(BlockPos first, BlockPos second) {
+        return (first.getX() >> 4) == (second.getX() >> 4)
+                && (first.getZ() >> 4) == (second.getZ() >> 4);
+    }
+
     private static boolean canPlaceChestAt(Level level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         return state.isAir() || state.canBeReplaced();
-    }
-
-    /** Last-resort delivery: scatter a container's contents as item entities above the beacon. */
-    private static void dropContainerContents(Level level, BlockPos pos, Container container) {
-        for (int i = 0; i < container.getContainerSize(); i++) {
-            ItemStack stack = container.getItem(i);
-            if (stack.isEmpty()) continue;
-            net.minecraft.world.Containers.dropItemStack(level,
-                    pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5, stack);
-        }
-        container.clearContent();
     }
 
     private static void fillVictoryChestDynamic(Level level, BlockPos beaconPos, Container chest,
@@ -1126,19 +1532,22 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         int totalFillSlots = Math.min(baseSlots + bonusSlots, chest.getContainerSize());
 
         for (int i = 0; i < totalFillSlots && i < 3; i++) {
-            chest.setItem(i, new ItemStack(Items.IRON_INGOT, 4 + random.nextInt(5)));
+            insertReward(chest, new ItemStack(Items.IRON_INGOT, 4 + random.nextInt(5)));
         }
 
         if (totalFillSlots > 3) {
-            chest.setItem(3, new ItemStack(Items.GOLD_INGOT, 2 + random.nextInt(4)));
+            insertReward(chest, new ItemStack(Items.GOLD_INGOT, 2 + random.nextInt(4)));
         }
 
         if (threatLevel >= 1 && totalFillSlots > 4) {
-            chest.setItem(4, new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get(), 1 + random.nextInt(2)));
+            insertReward(chest, new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get()));
+            if (random.nextBoolean()) {
+                insertReward(chest, new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get()));
+            }
         }
 
         if (threatLevel >= 2 && totalFillSlots > 5) {
-            chest.setItem(5, new ItemStack(Items.DIAMOND, 1 + random.nextInt(2)));
+            insertReward(chest, new ItemStack(Items.DIAMOND, 1 + random.nextInt(2)));
         }
 
         if (threatLevel >= 3 && level instanceof ServerLevel serverLevel) {
@@ -1148,28 +1557,47 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                     .withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(beaconPos))
                     .create(LootContextParamSets.CHEST);
             List<ItemStack> rewards = lootTable.getRandomItems(params);
-            int slot = 6;
             for (ItemStack reward : rewards) {
-                if (slot >= chest.getContainerSize()) break;
-                chest.setItem(slot, reward);
-                slot++;
+                if (!insertReward(chest, reward.copy())) break;
             }
         }
 
         if (threatLevel >= 4 && random.nextFloat() < 0.15f) {
-            chest.setItem(chest.getContainerSize() - 1, new ItemStack(Items.NETHER_STAR));
+            insertReward(chest, new ItemStack(Items.NETHER_STAR));
         }
 
         if (battleScore >= 260) {
-            chest.setItem(Math.min(chest.getContainerSize() - 1, 10), randomUpgradeModule(random));
+            insertReward(chest, randomUpgradeModule(random));
         }
         if (battleScore >= 520) {
-            chest.setItem(Math.min(chest.getContainerSize() - 1, 11), randomUpgradeModule(random));
+            insertReward(chest, randomUpgradeModule(random));
         }
         if (battleScore >= 650 && random.nextFloat() < 0.35f) {
-            chest.setItem(Math.min(chest.getContainerSize() - 1, 12),
-                    new ItemStack(ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get()));
+            insertReward(chest, new ItemStack(ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get()));
         }
+    }
+
+    private static boolean insertReward(Container container, ItemStack stack) {
+        if (stack.isEmpty()) return true;
+        for (int slot = 0; slot < container.getContainerSize(); slot++) {
+            ItemStack existing = container.getItem(slot);
+            if (!existing.isEmpty() && ItemStack.isSameItemSameTags(existing, stack)) {
+                int move = Math.min(stack.getCount(), existing.getMaxStackSize() - existing.getCount());
+                if (move > 0) {
+                    existing.grow(move);
+                    stack.shrink(move);
+                    container.setChanged();
+                    if (stack.isEmpty()) return true;
+                }
+            }
+        }
+        for (int slot = 0; slot < container.getContainerSize(); slot++) {
+            if (!container.getItem(slot).isEmpty()) continue;
+            int move = Math.min(stack.getCount(), stack.getMaxStackSize());
+            container.setItem(slot, stack.split(move));
+            if (stack.isEmpty()) return true;
+        }
+        return false;
     }
 
     private static int calculateBattleScore(int threatLevel, int kills, int stability, int affix, int doctrine) {
@@ -1291,16 +1719,33 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         tag.putInt("TodayKills", todayKills);
         tag.putBoolean("DawnProcessed", dawnProcessed);
         tag.putBoolean("Enabled", enabled);
+        if (ownerUuid != null) tag.putUUID("Owner", ownerUuid);
+        if (!ownerName.isEmpty()) tag.putString("OwnerName", ownerName);
         tag.putInt("SelectedBuffMask", selectedBuffMask);
         tag.putInt("StabilityNoticeStage", stabilityNoticeStage);
         tag.putInt("Doctrine", doctrine);
         tag.putInt("ActiveWaveAffix", activeWaveAffix);
         tag.putInt("LastBattleScore", lastBattleScore);
-        long[] networkNodes = new long[cachedNetworkNodes.size()];
-        for (int i = 0; i < cachedNetworkNodes.size(); i++) {
-            networkNodes[i] = cachedNetworkNodes.get(i).asLong();
-        }
-        tag.putLongArray("NetworkNodes", networkNodes);
+        tag.putBoolean("BattleInProgress", battleInProgress);
+        tag.putBoolean("BattleEligible", battleEligible);
+        tag.putInt("BattleThreatLevel", battleThreatLevel);
+        tag.putInt("BattleDoctrine", battleDoctrine);
+        tag.putInt("BattleAffix", battleAffix);
+        tag.putInt("BattleBuffMask", battleBuffMask);
+        tag.putLong("LastBattleTick", lastBattleTick);
+        tag.putLong("LastBattleDayTime", lastBattleDayTime);
+        tag.putLong("LastDefenseDay", lastDefenseDay);
+        tag.putBoolean("PendingReward", pendingReward);
+        tag.putInt("PendingThreatLevel", pendingThreatLevel);
+        tag.putInt("PendingKills", pendingKills);
+        tag.putInt("PendingStability", pendingStability);
+        tag.putInt("PendingDoctrine", pendingDoctrine);
+        tag.putInt("PendingAffix", pendingAffix);
+        tag.putInt("PendingScore", pendingScore);
+        tag.putBoolean("PendingEnergyNoticeSent", pendingEnergyNoticeSent);
+        tag.putBoolean("PendingSpaceNoticeSent", pendingSpaceNoticeSent);
+        if (pendingRewardId != null) tag.putUUID("PendingRewardId", pendingRewardId);
+        tag.putBoolean("PendingEnergyReserved", pendingEnergyReserved);
     }
 
     @Override
@@ -1317,11 +1762,50 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         todayKills = tag.getInt("TodayKills");
         dawnProcessed = tag.getBoolean("DawnProcessed");
         enabled = tag.contains("Enabled") ? tag.getBoolean("Enabled") : true;
+        ownerUuid = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
+        ownerName = tag.contains("OwnerName", Tag.TAG_STRING) ? tag.getString("OwnerName") : "";
         selectedBuffMask = tag.contains("SelectedBuffMask") ? tag.getInt("SelectedBuffMask") : (1 << BUFF_SPEED);
         stabilityNoticeStage = tag.getInt("StabilityNoticeStage");
         doctrine = tag.contains("Doctrine") ? Math.max(0, Math.min(DOCTRINE_COUNT - 1, tag.getInt("Doctrine"))) : DOCTRINE_GUARD;
         activeWaveAffix = tag.contains("ActiveWaveAffix") ? Math.max(0, Math.min(AFFIX_COUNT - 1, tag.getInt("ActiveWaveAffix"))) : AFFIX_NONE;
         lastBattleScore = tag.getInt("LastBattleScore");
+        battleInProgress = tag.getBoolean("BattleInProgress");
+        if (battleInProgress && warningTimer <= 0) warningTimer = 60;
+        battleEligible = tag.contains("BattleEligible") ? tag.getBoolean("BattleEligible") : battleInProgress;
+        battleThreatLevel = battleInProgress ? Math.max(1, Math.min(4, tag.getInt("BattleThreatLevel"))) : 0;
+        battleDoctrine = battleInProgress
+                ? Math.max(0, Math.min(DOCTRINE_COUNT - 1, tag.getInt("BattleDoctrine")))
+                : DOCTRINE_GUARD;
+        battleAffix = battleInProgress
+                ? Math.max(AFFIX_ARMORED, Math.min(AFFIX_COUNT - 1, tag.getInt("BattleAffix")))
+                : AFFIX_NONE;
+        battleBuffMask = battleInProgress
+                ? normalizeSelectedBuffMask(tag.contains("BattleBuffMask")
+                        ? tag.getInt("BattleBuffMask") : selectedBuffMask, battleThreatLevel)
+                : 0;
+        lastBattleTick = tag.contains("LastBattleTick", Tag.TAG_ANY_NUMERIC) ? tag.getLong("LastBattleTick") : -1L;
+        lastBattleDayTime = tag.contains("LastBattleDayTime", Tag.TAG_ANY_NUMERIC)
+                ? tag.getLong("LastBattleDayTime") : -1L;
+        lastDefenseDay = tag.contains("LastDefenseDay", Tag.TAG_ANY_NUMERIC)
+                ? tag.getLong("LastDefenseDay") : Long.MIN_VALUE;
+
+        pendingReward = tag.getBoolean("PendingReward");
+        pendingThreatLevel = pendingReward ? Math.max(1, Math.min(4, tag.getInt("PendingThreatLevel"))) : 0;
+        pendingKills = pendingReward ? Math.max(0, tag.getInt("PendingKills")) : 0;
+        pendingStability = pendingReward ? Math.max(0, tag.getInt("PendingStability")) : 0;
+        pendingDoctrine = pendingReward
+                ? Math.max(0, Math.min(DOCTRINE_COUNT - 1, tag.getInt("PendingDoctrine")))
+                : DOCTRINE_GUARD;
+        pendingAffix = pendingReward
+                ? Math.max(AFFIX_NONE, Math.min(AFFIX_COUNT - 1, tag.getInt("PendingAffix")))
+                : AFFIX_NONE;
+        pendingScore = pendingReward ? Math.max(0, tag.getInt("PendingScore")) : 0;
+        pendingEnergyNoticeSent = pendingReward && tag.getBoolean("PendingEnergyNoticeSent");
+        pendingSpaceNoticeSent = pendingReward && tag.getBoolean("PendingSpaceNoticeSent");
+        pendingRewardId = pendingReward && tag.hasUUID("PendingRewardId")
+                ? tag.getUUID("PendingRewardId") : null;
+        pendingEnergyReserved = pendingReward && tag.getBoolean("PendingEnergyReserved");
+        pendingDeliveryRetryCooldown = 0;
         if (tag.contains("NetworkNodes")) {
             long[] networkNodes = tag.getLongArray("NetworkNodes");
             java.util.ArrayList<BlockPos> nodes = new java.util.ArrayList<>();
@@ -1330,6 +1814,8 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                 nodes.add(BlockPos.of(node));
             }
             cachedNetworkNodes = java.util.List.copyOf(nodes);
+        } else {
+            cachedNetworkNodes = java.util.List.of();
         }
     }
 
@@ -1337,6 +1823,11 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     public CompoundTag getUpdateTag() {
         CompoundTag tag = new CompoundTag();
         saveAdditional(tag);
+        long[] networkNodes = new long[cachedNetworkNodes.size()];
+        for (int i = 0; i < cachedNetworkNodes.size(); i++) {
+            networkNodes[i] = cachedNetworkNodes.get(i).asLong();
+        }
+        tag.putLongArray("NetworkNodes", networkNodes);
         return tag;
     }
 
@@ -1397,6 +1888,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     @Nullable
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
+        refreshNearbyTurretCounts();
         return new PsychicBeaconMenu(containerId, playerInventory, this);
     }
 }

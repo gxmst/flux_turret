@@ -17,7 +17,7 @@ import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.item.ItemStack;
 
 public class PsychicBeaconMenu extends AbstractContainerMenu {
-    private static final int DATA_SIZE = 17;
+    private static final int DATA_SIZE = 19;
     private static final int ENERGY_LOW = 0;
     private static final int ENERGY_HIGH = 1;
     private static final int MAX_ENERGY_LOW = 2;
@@ -34,7 +34,9 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
     private static final int SELECTED_BUFF_MASK = 13;
     private static final int DOCTRINE = 14;
     private static final int ACTIVE_AFFIX = 15;
-    private static final int LAST_BATTLE_SCORE = 16;
+    private static final int LAST_BATTLE_SCORE_LOW = 16;
+    private static final int LAST_BATTLE_SCORE_HIGH = 17;
+    private static final int BATTLE_IN_PROGRESS = 18;
 
     private final PsychicBeaconBlockEntity beacon;
     private final BlockPos beaconPos;
@@ -113,7 +115,11 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
     }
 
     public int getLastBattleScore() {
-        return data.get(LAST_BATTLE_SCORE);
+        return getWideValue(LAST_BATTLE_SCORE_LOW);
+    }
+
+    public boolean isBattleInProgress() {
+        return data.get(BATTLE_IN_PROGRESS) != 0;
     }
 
     public PsychicBeaconBlockEntity getBeacon() {
@@ -161,7 +167,8 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         data.set(SELECTED_BUFF_MASK, beacon.getSelectedBuffMask());
         data.set(DOCTRINE, beacon.getDoctrine());
         data.set(ACTIVE_AFFIX, beacon.getActiveWaveAffix());
-        data.set(LAST_BATTLE_SCORE, beacon.getLastBattleScore());
+        setWideValue(LAST_BATTLE_SCORE_LOW, beacon.getLastBattleScore());
+        data.set(BATTLE_IN_PROGRESS, beacon.isBattleInProgress() ? 1 : 0);
         super.broadcastChanges();
     }
 

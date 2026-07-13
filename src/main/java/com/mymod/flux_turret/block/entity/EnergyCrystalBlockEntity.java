@@ -6,10 +6,13 @@ import com.mymod.flux_turret.block.EnergyCrystalBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.AbstractFurnaceBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.energy.EnergyStorage;
@@ -20,6 +23,8 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 
 public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEntity {
     private static final int TICK_INTERVAL = 5;
+    private static final int ACTIVE_DURATION_TICKS = 20;
+    private static final Direction[] OUTPUT_DIRECTIONS = Direction.values();
 
     private final ConfigurableEnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyCap;
@@ -28,6 +33,7 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
     private int activeTicks = 0;
     private boolean charging = false;
     private int tickCounter = 0;
+    private int outputDirectionCursor = 0;
 
     public EnergyCrystalBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.ENERGY_CRYSTAL_BE.get(), pos, state);
@@ -52,79 +58,114 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public void setEnergyStored(int energy) {
         energyStorage.setEnergy(energy);
-        setChanged();
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, EnergyCrystalBlockEntity be) {
-        if (level.isClientSide) {
-            if (be.activeTicks > 0) {
-                be.activeTicks--;
+        if (level.isClientSide) return;
+
+        be.energyStorage.applyConfig();
+        be.energyStorage.refreshOutputBudget(level.getGameTime());
+        be.syncHasEnergyState();
+
+        boolean wasActive = be.activeTicks > 0;
+        if (be.activeTicks > 0) {
+            be.activeTicks--;
+        }
+
+        be.tickCounter++;
+        if (be.tickCounter % TICK_INTERVAL != 0) {
+            if (wasActive && be.activeTicks == 0) {
+                be.setChanged();
+                BlockState currentState = be.getBlockState();
+                level.sendBlockUpdated(pos, currentState, currentState, 3);
             }
             return;
         }
 
-        be.energyStorage.applyConfig();
-        be.tickCounter++;
-        if (be.tickCounter % TICK_INTERVAL != 0) return;
-
         int capacity = be.energyStorage.getMaxEnergyStored();
-        boolean wasFull = state.hasProperty(EnergyCrystalBlock.FULL) && state.getValue(EnergyCrystalBlock.FULL);
         int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get() * be.getEnergyMultiplier() * TICK_INTERVAL;
-        int maxOutput = TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * be.getEnergyMultiplier() * TICK_INTERVAL;
 
         // Charge from lit furnace below
         boolean wasCharging = be.charging;
         be.charging = false;
         if (be.energyStorage.getEnergyStored() < capacity) {
             BlockState belowState = level.getBlockState(pos.below());
-            if (belowState.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.LIT)
-                    && belowState.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.LIT)) {
+            if (belowState.getBlock() instanceof AbstractFurnaceBlock
+                    && belowState.hasProperty(BlockStateProperties.LIT)
+                    && belowState.getValue(BlockStateProperties.LIT)) {
                 int received = be.energyStorage.receiveEnergy(chargeRate, false);
                 if (received > 0) {
                     be.charging = true;
-                    be.setChanged();
                 }
             }
         }
 
-        // Auto-push energy to all adjacent blocks
-        boolean[] transferred = {false};
-        for (Direction dir : Direction.values()) {
+        // Auto-push energy using one shared five-tick budget. Rotating the first
+        // direction prevents a permanently energy-starved side when demand exceeds
+        // the configured total output.
+        boolean transferred = false;
+        int remainingOutput = be.energyStorage.getAvailableOutputBudget();
+        int nextOutputDirectionCursor = (be.outputDirectionCursor + 1) % OUTPUT_DIRECTIONS.length;
+        for (int i = 0; i < OUTPUT_DIRECTIONS.length && remainingOutput > 0; i++) {
+            int directionIndex = (be.outputDirectionCursor + i) % OUTPUT_DIRECTIONS.length;
+            Direction dir = OUTPUT_DIRECTIONS[directionIndex];
             if (be.energyStorage.getEnergyStored() <= 0) break;
             BlockPos neighborPos = pos.relative(dir);
             BlockEntity neighborBe = level.getBlockEntity(neighborPos);
             if (neighborBe == null) continue;
-            LazyOptional<IEnergyStorage> neighborCap = neighborBe.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
-            neighborCap.ifPresent(neighborStorage -> {
-                if (neighborStorage.canReceive()) {
-                    int toExtract = be.energyStorage.extractEnergy(maxOutput, true);
-                    if (toExtract > 0) {
-                        int received = neighborStorage.receiveEnergy(toExtract, false);
-                        if (received > 0) {
-                            be.energyStorage.extractEnergy(received, false);
-                            be.setChanged();
-                            transferred[0] = true;
-                        }
-                    }
-                }
-            });
+            IEnergyStorage neighborStorage = neighborBe
+                    .getCapability(ForgeCapabilities.ENERGY, dir.getOpposite())
+                    .resolve()
+                    .orElse(null);
+            if (neighborStorage == null || !neighborStorage.canReceive()) continue;
+
+            int offered = be.energyStorage.extractEnergy(remainingOutput, true);
+            if (offered <= 0) continue;
+
+            int received = neighborStorage.receiveEnergy(offered, false);
+            int accepted = Math.min(offered, Math.max(0, received));
+            if (accepted <= 0) continue;
+
+            int extracted = be.energyStorage.extractEnergy(accepted, false);
+            if (extracted > 0) {
+                remainingOutput -= extracted;
+                transferred = true;
+                // Resume after the last side that actually received power. Merely
+                // advancing by one fixed enum slot is unfair when only a sparse
+                // subset of sides has receivers (e.g. DOWN would precede UP on five
+                // of six starts). Advancing from the served side gives each hungry
+                // receiver the next first chance in cyclic order.
+                nextOutputDirectionCursor = (directionIndex + 1) % OUTPUT_DIRECTIONS.length;
+            }
+        }
+        be.outputDirectionCursor = nextOutputDirectionCursor;
+
+        if (transferred || be.charging) {
+            be.activeTicks = ACTIVE_DURATION_TICKS;
         }
 
-        int prevActiveTicks = be.activeTicks;
-        if (transferred[0] || be.charging) {
-            be.activeTicks = 20;
-        } else if (be.activeTicks > 0) {
-            be.activeTicks--;
-        }
-
-        boolean isCharged = be.energyStorage.getEnergyStored() > 0;
-        if (state.hasProperty(EnergyCrystalBlock.FULL) && wasFull != isCharged) {
-            level.setBlock(pos, state.setValue(EnergyCrystalBlock.FULL, isCharged), 3);
-        }
-
-        if ((be.activeTicks > 0) != (prevActiveTicks > 0) || be.charging != wasCharging) {
+        if (wasActive != (be.activeTicks > 0) || be.charging != wasCharging) {
             be.setChanged();
-            level.sendBlockUpdated(pos, state, state, 3);
+            BlockState currentState = be.getBlockState();
+            level.sendBlockUpdated(pos, currentState, currentState, 3);
+        }
+    }
+
+    /** Keep the blockstate and comparator-visible energy state current for all mutation paths. */
+    private void onEnergyChanged(int previousEnergy, int currentEnergy) {
+        if (previousEnergy == currentEnergy) return;
+        setChanged();
+        syncHasEnergyState();
+    }
+
+    private void syncHasEnergyState() {
+        if (level == null || level.isClientSide) return;
+        BlockState state = getBlockState();
+        if (!state.hasProperty(EnergyCrystalBlock.FULL)) return;
+
+        boolean hasEnergy = energyStorage.getEnergyStored() > 0;
+        if (state.getValue(EnergyCrystalBlock.FULL) != hasEnergy) {
+            level.setBlock(worldPosition, state.setValue(EnergyCrystalBlock.FULL, hasEnergy), 3);
         }
     }
 
@@ -136,6 +177,9 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         }
         activeTicks = tag.getInt("ActiveTicks");
         charging = tag.getBoolean("Charging");
+        outputDirectionCursor = tag.contains("OutputDirectionCursor")
+                ? Math.floorMod(tag.getInt("OutputDirectionCursor"), OUTPUT_DIRECTIONS.length)
+                : 0;
     }
 
     @Override
@@ -144,6 +188,7 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         tag.put("Energy", energyStorage.serializeNBT());
         tag.putInt("ActiveTicks", activeTicks);
         tag.putBoolean("Charging", charging);
+        tag.putInt("OutputDirectionCursor", outputDirectionCursor);
     }
 
     @Override
@@ -188,6 +233,9 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private class ConfigurableEnergyStorage extends EnergyStorage {
+        private int availableOutputBudget = 0;
+        private long outputBudgetTick = Long.MIN_VALUE;
+
         ConfigurableEnergyStorage() {
             super(TurretConfig.ENERGY_CRYSTAL_CAPACITY.get(),
                     TurretConfig.ENERGY_CRYSTAL_CAPACITY.get(),
@@ -196,27 +244,81 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         void applyConfig() {
+            int previousEnergy = this.energy;
             this.capacity = getConfiguredCapacity();
             this.maxReceive = this.capacity;
             this.maxExtract = getConfiguredMaxExtract();
             this.energy = Math.max(0, Math.min(this.energy, this.capacity));
+            this.availableOutputBudget = Math.min(this.availableOutputBudget, this.maxExtract);
+            if (this.energy != previousEnergy) {
+                EnergyCrystalBlockEntity.this.onEnergyChanged(previousEnergy, this.energy);
+            }
         }
 
         void setEnergy(int energy) {
             applyConfig();
+            int previousEnergy = this.energy;
             this.energy = Math.max(0, Math.min(energy, this.capacity));
+            if (this.energy != previousEnergy) {
+                EnergyCrystalBlockEntity.this.onEnergyChanged(previousEnergy, this.energy);
+            }
+        }
+
+        void refreshOutputBudget(long gameTime) {
+            int perTickOutput = getConfiguredPerTickOutput();
+            int budgetCap = getConfiguredMaxExtract();
+
+            if (outputBudgetTick == Long.MIN_VALUE || gameTime < outputBudgetTick) {
+                outputBudgetTick = gameTime;
+                availableOutputBudget = Math.min(budgetCap, perTickOutput);
+                return;
+            }
+            if (gameTime == outputBudgetTick) return;
+
+            long elapsed = gameTime - outputBudgetTick;
+            long replenished = (long) availableOutputBudget + elapsed * perTickOutput;
+            availableOutputBudget = (int) Math.min(budgetCap, replenished);
+            outputBudgetTick = gameTime;
+        }
+
+        int getAvailableOutputBudget() {
+            applyConfig();
+            if (level != null && !level.isClientSide) {
+                refreshOutputBudget(level.getGameTime());
+                return Math.min(availableOutputBudget, energy);
+            }
+            return Math.min(maxExtract, energy);
         }
 
         @Override
         public int receiveEnergy(int maxReceive, boolean simulate) {
             applyConfig();
-            return super.receiveEnergy(maxReceive, simulate);
+            int previousEnergy = this.energy;
+            int received = super.receiveEnergy(maxReceive, simulate);
+            if (!simulate && this.energy != previousEnergy) {
+                EnergyCrystalBlockEntity.this.onEnergyChanged(previousEnergy, this.energy);
+            }
+            return received;
         }
 
         @Override
         public int extractEnergy(int maxExtract, boolean simulate) {
             applyConfig();
-            return super.extractEnergy(maxExtract, simulate);
+            if (level == null || level.isClientSide) {
+                return super.extractEnergy(maxExtract, simulate);
+            }
+
+            refreshOutputBudget(level.getGameTime());
+            int allowed = Math.min(Math.max(0, maxExtract), availableOutputBudget);
+            if (allowed <= 0) return 0;
+
+            int previousEnergy = this.energy;
+            int extracted = super.extractEnergy(allowed, simulate);
+            if (!simulate && extracted > 0) {
+                availableOutputBudget -= extracted;
+                EnergyCrystalBlockEntity.this.onEnergyChanged(previousEnergy, this.energy);
+            }
+            return extracted;
         }
 
         // Read-only getters intentionally skip applyConfig(): the backing fields
@@ -254,12 +356,15 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         @Override
         public void deserializeNBT(Tag nbt) {
             applyConfig();
+            int loadedEnergy;
             if (nbt instanceof CompoundTag compoundTag) {
-                setEnergy(compoundTag.getInt("energy"));
-                return;
+                loadedEnergy = compoundTag.getInt("energy");
+            } else if (nbt instanceof IntTag intTag) {
+                loadedEnergy = intTag.getAsInt();
+            } else {
+                throw new IllegalArgumentException("Unsupported energy NBT type: " + nbt.getClass().getSimpleName());
             }
-            super.deserializeNBT(nbt);
-            applyConfig();
+            this.energy = Math.max(0, Math.min(loadedEnergy, this.capacity));
         }
 
         private int getConfiguredCapacity() {
@@ -267,7 +372,11 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         private int getConfiguredMaxExtract() {
-            return TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * EnergyCrystalBlockEntity.this.getEnergyMultiplier() * TICK_INTERVAL;
+            return getConfiguredPerTickOutput() * TICK_INTERVAL;
+        }
+
+        private int getConfiguredPerTickOutput() {
+            return TurretConfig.ENERGY_CRYSTAL_MAX_OUTPUT.get() * EnergyCrystalBlockEntity.this.getEnergyMultiplier();
         }
     }
 

@@ -8,6 +8,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkHooks;
+import net.minecraftforge.common.util.FakePlayer;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -73,6 +74,10 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
     @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
+        if (!level.isClientSide && placer instanceof Player player && !(player instanceof FakePlayer)
+                && level.getBlockEntity(pos) instanceof PsychicBeaconBlockEntity beacon) {
+            beacon.setOwner(player);
+        }
     }
 
     @Nullable
@@ -105,14 +110,19 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
         BlockPos beaconPos = state.getValue(HALF) == DoubleBlockHalf.UPPER ? pos.below() : pos;
         BlockState beaconState = level.getBlockState(beaconPos);
         if (level.getBlockEntity(beaconPos) instanceof PsychicBeaconBlockEntity beacon) {
+            if (!beacon.canPlayerConfigure(player)) {
+                player.displayClientMessage(Component.translatable("message.flux_turret.beacon_access_denied")
+                        .withStyle(net.minecraft.ChatFormatting.RED), true);
+                return InteractionResult.CONSUME;
+            }
             ItemStack heldItem = player.getItemInHand(hand);
 
             InteractionResult chargeResult = ChargeHelper.tryRedstoneCharge(
                     level, beaconPos, beaconState, player, heldItem, beacon.getEnergyStorage(),
+                    beacon::receiveManualEnergy,
                     TurretConfig.PSYCHIC_BEACON_REDSTONE_CHARGE.get(),
                     TurretConfig.PSYCHIC_BEACON_REDSTONE_BLOCK_CHARGE.get());
             if (chargeResult != null) {
-                beacon.setChanged();
                 return chargeResult;
             }
 
