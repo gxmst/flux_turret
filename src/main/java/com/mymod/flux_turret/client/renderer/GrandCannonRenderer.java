@@ -18,6 +18,7 @@ public class GrandCannonRenderer implements BlockEntityRenderer<GrandCannonBlock
     public GrandCannonRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new GrandCannonModel());
         this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
+        this.geckoRenderer.addRenderLayer(new UpgradeGlowLayer<>(this.geckoRenderer));
     }
 
     @Override

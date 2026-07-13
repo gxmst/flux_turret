@@ -23,6 +23,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
     public TeslaCoilRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new TeslaCoilModel());
         this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
+        this.geckoRenderer.addRenderLayer(new UpgradeGlowLayer<>(this.geckoRenderer));
     }
 
     @Override

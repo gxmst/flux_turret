@@ -108,6 +108,23 @@ public class FluxTurretMod {
             // Static beacon registry must not outlive the server (integrated server
             // re-entry, dimension churn) — drop all tracked references.
             PsychicBeaconBlockEntity.clearActiveBeacons();
+            // Same for the per-level shared monster scan cache; its keys are
+            // ServerLevels that must not be pinned past server shutdown.
+            com.mymod.flux_turret.util.TurretScanCache.clearAll();
+        }
+
+        @SubscribeEvent
+        public static void onLevelUnload(net.minecraftforge.event.level.LevelEvent.Unload event) {
+            // A level going away (dimension unload, server swap) should not leave
+            // dangling beacon references in the static registry. setRemoved() covers
+            // normal block-entity teardown, but a bulk level unload is not guaranteed
+            // to fire it for every tracked beacon, so prune by level explicitly.
+            if (event.getLevel() instanceof net.minecraft.world.level.Level level && !level.isClientSide) {
+                PsychicBeaconBlockEntity.clearBeaconsForLevel(level);
+                if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                    com.mymod.flux_turret.util.TurretScanCache.clearLevel(serverLevel);
+                }
+            }
         }
 
         @SubscribeEvent

@@ -242,7 +242,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         }
 
         if (be.targetId != prevTargetId || be.isFiring != prevFiring
-                || be.visualHasEnergy != prevHasEnergy) {
+                || be.visualHasEnergy != prevHasEnergy || be.aimDriftedSinceSync()) {
             be.markUpdated();
         }
     }

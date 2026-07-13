@@ -20,6 +20,7 @@ public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretB
     public GatlingTurretRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new GatlingTurretModel());
         this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
+        this.geckoRenderer.addRenderLayer(new UpgradeGlowLayer<>(this.geckoRenderer));
     }
 
     @Override

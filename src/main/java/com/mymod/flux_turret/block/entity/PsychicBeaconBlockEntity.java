@@ -67,6 +67,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static final String BEACON_SPAWN_TAG = "FluxTurretBeaconSpawn";
     private static final String BEACON_POS_TAG = "FluxTurretBeaconPos";
     private static final int MONSTER_COUNT_RADIUS = 32;
+    private static final int NOTIFY_RADIUS = 50;
     private static final int SPAWN_CLEANUP_RADIUS = 48;
     private static final int NETWORK_NODE_SYNC_CAP = 24;
 
@@ -116,6 +117,18 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private int turretScanCooldown = 0;
 
     /**
+     * Players within notify range (50 blocks), refreshed on {@link #PLAYER_SCAN_INTERVAL}
+     * rather than re-scanned on every warning / buff / status message. Beacon messages
+     * are not frame-critical, so a ~1s staleness is fine. Server thread only; entries are
+     * re-validated (alive / same level / in range) at use time so a logged-out or
+     * teleported player can never be messaged through a stale reference.
+     */
+    private java.util.List<Player> cachedNearbyPlayers = java.util.List.of();
+    private int playerScanCooldown = 0;
+    private static final int PLAYER_SCAN_INTERVAL = 20;
+    private static final double PLAYER_SCAN_RADIUS = 50.0;
+
+    /**
      * Server-side registry of currently-active beacons, maintained each tick.
      * Lets mob-death / sleep lookups avoid scanning every block entity in a
      * large chunk radius. Server thread only.
@@ -141,6 +154,23 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             }
         }
         return found;
+    }
+
+    /**
+     * Drop every tracked beacon belonging to {@code level}. Hooked to level unload so a
+     * dimension that goes away can't leave dangling block-entity references in the static
+     * set until the next {@link #findNearbyActiveBeacon} call happens to prune them. A
+     * beacon's {@code level} field is nulled on unload in some paths, so entries with a
+     * null level are swept here too.
+     */
+    public static void clearBeaconsForLevel(Level level) {
+        java.util.Iterator<PsychicBeaconBlockEntity> it = ACTIVE_BEACONS.iterator();
+        while (it.hasNext()) {
+            PsychicBeaconBlockEntity beacon = it.next();
+            if (beacon.level == level || beacon.level == null || beacon.isRemoved()) {
+                it.remove();
+            }
+        }
     }
 
     /** Drop all tracked beacons. Hooked to server stop so the static set never outlives a world. */
@@ -383,6 +413,16 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             be.beaconState = STATE_OFFLINE;
         }
 
+        // Refresh the notify-range player cache BEFORE state handling: several state
+        // paths (night-start affix, redstone warning, stability alerts) message players
+        // within the same tick, so the cache must be current when they read it. Otherwise
+        // the first message after a player enters range could fire against a stale list.
+        be.playerScanCooldown--;
+        if (be.playerScanCooldown <= 0) {
+            be.refreshNearbyPlayers(level);
+            be.playerScanCooldown = PLAYER_SCAN_INTERVAL;
+        }
+
         switch (be.beaconState) {
             case STATE_OFFLINE:
                 tickOffline(level, pos, be);
@@ -484,7 +524,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         if (level.hasNeighborSignal(pos)) {
             be.beaconState = STATE_WARNING;
             be.warningTimer = 60;
-            Player nearest = findNearestPlayer(level, pos, 50);
+            Player nearest = be.findNearestPlayer();
             if (nearest != null) {
                 nearest.displayClientMessage(
                     Component.translatable("message.flux_turret.beacon_warning")
@@ -529,7 +569,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         if (!level.hasNeighborSignal(pos)) {
             be.beaconState = STATE_ACTIVE;
             be.warningTimer = 0;
-            Player nearest = findNearestPlayer(level, pos, 50);
+            Player nearest = be.findNearestPlayer();
             if (nearest != null) {
                 nearest.displayClientMessage(
                     Component.translatable("message.flux_turret.beacon_resumed")
@@ -565,7 +605,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static void beginNightDefense(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
         if (be.activeWaveAffix != AFFIX_NONE) return;
         be.activeWaveAffix = 1 + level.random.nextInt(AFFIX_COUNT - 1);
-        notifyNearbyPlayers(level, pos, Component.translatable("message.flux_turret.beacon_affix",
+        be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_affix",
                 Component.translatable(getAffixTranslationKey(be.activeWaveAffix))).withStyle(net.minecraft.ChatFormatting.LIGHT_PURPLE));
     }
 
@@ -585,17 +625,17 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
         if (be.stabilityNoticeStage == 0) {
             be.stabilityNoticeStage = 1;
-            notifyNearbyPlayers(level, pos, Component.translatable("message.flux_turret.beacon_stability_drop", be.stability, max)
+            be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_stability_drop", be.stability, max)
                     .withStyle(net.minecraft.ChatFormatting.YELLOW));
         }
         if (be.stabilityNoticeStage < 2 && be.stability <= max / 2) {
             be.stabilityNoticeStage = 2;
-            notifyNearbyPlayers(level, pos, Component.translatable("message.flux_turret.beacon_stability_low", be.stability, max)
+            be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_stability_low", be.stability, max)
                     .withStyle(net.minecraft.ChatFormatting.GOLD));
         }
         if (be.stabilityNoticeStage < 3 && be.stability <= Math.max(1, max / 4)) {
             be.stabilityNoticeStage = 3;
-            notifyNearbyPlayers(level, pos, Component.translatable("message.flux_turret.beacon_stability_critical", be.stability, max)
+            be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_stability_critical", be.stability, max)
                     .withStyle(net.minecraft.ChatFormatting.RED));
         }
     }
@@ -685,13 +725,30 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
     private void displayMessageToNearbyPlayers(Component message) {
         if (level == null) return;
-        notifyNearbyPlayers(level, worldPosition, message);
+        notifyNearbyPlayers(message);
     }
 
-    private static void notifyNearbyPlayers(Level level, BlockPos pos, Component message) {
-        AABB area = new AABB(pos).inflate(50);
-        List<Player> players = level.getEntitiesOfClass(Player.class, area);
-        for (Player player : players) {
+    /**
+     * Refresh the notify-range player cache. One AABB scan per {@link #PLAYER_SCAN_INTERVAL}
+     * ticks instead of one per status message. Server thread only.
+     */
+    private void refreshNearbyPlayers(Level level) {
+        AABB area = new AABB(worldPosition).inflate(NOTIFY_RADIUS);
+        cachedNearbyPlayers = level.getEntitiesOfClass(Player.class, area);
+    }
+
+    /**
+     * Message every cached player still alive, in this level, and within notify range.
+     * The range re-check matters because the cache is up to {@link #PLAYER_SCAN_INTERVAL}
+     * ticks stale — a player may have walked out (or logged out) since the last scan.
+     */
+    private void notifyNearbyPlayers(Component message) {
+        if (level == null) return;
+        double radiusSq = (double) NOTIFY_RADIUS * NOTIFY_RADIUS;
+        for (int i = 0; i < cachedNearbyPlayers.size(); i++) {
+            Player player = cachedNearbyPlayers.get(i);
+            if (player == null || !player.isAlive() || player.level() != level) continue;
+            if (player.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > radiusSq) continue;
             player.displayClientMessage(message, true);
         }
     }
@@ -956,7 +1013,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         be.beaconState = STATE_FAILED;
         be.todayKills = 0;
         cleanupBeaconSpawnedMonsters(level, pos);
-        notifyNearbyPlayers(level, pos, Component.translatable("message.flux_turret.beacon_stability_failure")
+        be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_stability_failure")
                 .withStyle(net.minecraft.ChatFormatting.DARK_RED));
 
         // Use BLOCK interaction mode to respect explosion protection
@@ -1145,15 +1202,22 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         };
     }
 
+    /**
+     * Nearest cached player still alive, in this level, and within notify range.
+     * Reads the {@link #cachedNearbyPlayers} snapshot rather than scanning the world;
+     * the range/liveness re-check covers cache staleness (see {@link #notifyNearbyPlayers}).
+     */
     @Nullable
-    private static Player findNearestPlayer(Level level, BlockPos pos, int radius) {
-        AABB area = new AABB(pos).inflate(radius);
-        List<Player> players = level.getEntitiesOfClass(Player.class, area);
-        if (players.isEmpty()) return null;
+    private Player findNearestPlayer() {
+        if (level == null) return null;
+        double radiusSq = (double) NOTIFY_RADIUS * NOTIFY_RADIUS;
         Player nearest = null;
         double minDist = Double.MAX_VALUE;
-        for (Player p : players) {
-            double dist = p.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+        for (int i = 0; i < cachedNearbyPlayers.size(); i++) {
+            Player p = cachedNearbyPlayers.get(i);
+            if (p == null || !p.isAlive() || p.level() != level) continue;
+            double dist = p.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5);
+            if (dist > radiusSq) continue;
             if (dist < minDist) {
                 minDist = dist;
                 nearest = p;

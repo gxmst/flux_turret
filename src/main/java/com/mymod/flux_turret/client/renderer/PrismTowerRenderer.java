@@ -21,6 +21,7 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
     public PrismTowerRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new PrismTowerModel());
         this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
+        this.geckoRenderer.addRenderLayer(new UpgradeGlowLayer<>(this.geckoRenderer));
     }
 
     @Override

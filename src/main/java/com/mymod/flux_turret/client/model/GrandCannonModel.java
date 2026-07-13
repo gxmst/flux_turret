@@ -39,9 +39,30 @@ public class GrandCannonModel extends GeoModel<GrandCannonBlockEntity> {
         if (animatable.getBlockState().getValue(GrandCannonBlock.PART) != GrandCannonBlock.CannonPart.BACK_LEFT)
             return;
 
-        if (mount != null && gun != null && animatable.visualTargetId != -1) {
-            Entity target = animatable.getLevel().getEntity(animatable.visualTargetId);
-            if (target != null) {
+        if (mount != null && gun != null) {
+            double tx = 0, ty = 0, tz = 0;
+            boolean haveAim = false;
+
+            // Prefer the live target entity when this client has it loaded (smooth
+            // tracking); otherwise use the server-synced aim point so a distant
+            // client that isn't tracking the mob still orients the cannon correctly.
+            if (animatable.visualTargetId != -1) {
+                Entity target = animatable.getLevel().getEntity(animatable.visualTargetId);
+                if (target != null) {
+                    tx = target.getX();
+                    ty = target.getEyeY();
+                    tz = target.getZ();
+                    haveAim = true;
+                }
+            }
+            if (!haveAim && animatable.hasAimTarget()) {
+                tx = animatable.getAimTargetX();
+                ty = animatable.getAimTargetY();
+                tz = animatable.getAimTargetZ();
+                haveAim = true;
+            }
+
+            if (haveAim) {
                 // Calculate center of 2x2 structure relative to core block
                 Direction facing = animatable.getBlockState().getValue(GrandCannonBlock.FACING);
                 Direction right = facing.getClockWise();
@@ -49,9 +70,9 @@ public class GrandCannonModel extends GeoModel<GrandCannonBlockEntity> {
                 double centerZ = animatable.getBlockPos().getZ() + 0.5 + facing.getStepZ() * 0.5 + right.getStepZ() * 0.5;
                 double centerY = animatable.getBlockPos().getY() + 1.5;
 
-                double dx = target.getX() - centerX;
-                double dy = target.getEyeY() - centerY;
-                double dz = target.getZ() - centerZ;
+                double dx = tx - centerX;
+                double dy = ty - centerY;
+                double dz = tz - centerZ;
                 double dist = Math.sqrt(dx * dx + dz * dz);
                 mount.setRotY(-(float) Math.atan2(dx, -dz));
                 gun.setRotX((float) Math.atan2(dy, dist));

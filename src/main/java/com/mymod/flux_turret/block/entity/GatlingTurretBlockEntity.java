@@ -127,8 +127,11 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
             be.targetId = -1;
             be.isFiring = false;
             be.spinUp = Math.max(0, be.spinUp - 4);
+            be.clearAimTarget();
         } else {
             be.targetId = target.getId();
+            Vec3 aim = target.getEyePosition(0.0f);
+            be.setAimTarget(aim.x, aim.y, aim.z);
             be.spinUp = Math.min(MAX_SPIN, be.spinUp + 3);
 
             if (be.spinUp < MIN_SPIN_TO_FIRE) {
@@ -176,7 +179,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
         }
 
         if (be.targetId != prevTargetId || be.spinUp != prevSpinUp || be.isFiring != prevFiring
-                || be.visualHasEnergy != prevHasEnergy) {
+                || be.visualHasEnergy != prevHasEnergy || be.aimDriftedSinceSync()) {
             be.markUpdated();
         }
     }
