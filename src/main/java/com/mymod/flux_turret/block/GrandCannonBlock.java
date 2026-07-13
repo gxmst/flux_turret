@@ -2,6 +2,7 @@ package com.mymod.flux_turret.block;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
+import com.mymod.flux_turret.item.TurretUpgradeModuleItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionResult;
@@ -128,6 +129,11 @@ public class GrandCannonBlock extends BaseEntityBlock {
 
         BlockEntity be = level.getBlockEntity(corePos);
         if (be instanceof GrandCannonBlockEntity cannon) {
+            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryInstall(level, corePos, player, hand, be);
+            if (upgradeResult != InteractionResult.PASS) {
+                return upgradeResult;
+            }
+
             net.minecraft.network.chat.Component formed = net.minecraft.network.chat.Component.translatable(
                     cannon.isFormed() ? "message.flux_turret.formed_yes" : "message.flux_turret.formed_no");
             player.displayClientMessage(

@@ -8,7 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Started the 1.5 aggressive art-overhaul branch.
+- Added high-resolution block atlases: 128px assets are now 256px, and the Grand Cannon atlas is now 512px.
+- Added 128px item icons for all turret and crystal items.
+- Added extra GeckoLib model accent cubes for armor plates, muzzle parts, rails, braces, and energy-core details.
+- Added new glowmask resources for Gatling Turret, Energy Crystal, and Empty Crystal.
+- Gatling Turret and Energy Crystal renderers now use GeckoLib glowing render layers.
+
+### Changed
+- Scaled GeckoLib texture dimensions and UV coordinates to match the upgraded atlases.
+- Reworked high-resolution texture details with denser panel seams, vents, scratches, warning stripes, circuit traces, and emissive areas.
+
+---
+
+## [1.4] - 2026-06-16
+
 ### Fixed
+- Empty Crystal glowmask now contains faint dormant cracks instead of a fully transparent image, avoiding GeckoLib `AutoGlowingGeoLayer` crashes when rendering depleted Energy Crystal blocks.
 - Grand Cannon now drops a single item only when broken by a non-creative player.
 - Psychic Beacon monster cleanup now matches the specific beacon target before discarding spawned mobs.
 - Removed the unused `battleDuration` config entry from Psychic Beacon settings.

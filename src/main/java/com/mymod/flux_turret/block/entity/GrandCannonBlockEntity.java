@@ -3,6 +3,7 @@ package com.mymod.flux_turret.block.entity;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.GrandCannonBlock;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -10,6 +11,8 @@ import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -117,6 +120,13 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
     }
 
     @Override
+    public boolean canInstallUpgrade(TurretUpgradeType type) {
+        return isCore() && (type == TurretUpgradeType.SEISMIC_SHOCK
+                || type == TurretUpgradeType.ARMOR_BREAK
+                || type == TurretUpgradeType.CLUSTER_SHELLS);
+    }
+
+    @Override
     protected void saveAdditionalTurret(CompoundTag tag) {
         tag.putBoolean("Formed", formed);
         tag.putInt("WarmupTicks", warmupTicks);
@@ -171,8 +181,6 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
         if (!be.formed) return;
 
-        be.refreshMonsterCacheIfNeeded(level, pos);
-
         int prevTargetId = be.targetId;
         boolean prevFiring = be.isFiring;
         boolean prevHasEnergy = be.visualHasEnergy;
@@ -196,6 +204,15 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
         if (be.attackCooldown > 0)
             be.attackCooldown--;
+
+        // Skip the (expensive, range-64) monster scan entirely when we can't afford
+        // to fire — matches the Gatling/Tesla energy gating and avoids a full
+        // getEntitiesOfClass over a 128-block cube every cache interval while idle.
+        if (hasEnoughEnergy) {
+            be.refreshMonsterCacheIfNeeded(level, pos);
+        } else {
+            be.monsterCache = java.util.List.of();
+        }
 
         Monster target = hasEnoughEnergy ? be.findClosestMonster(level, pos) : null;
 
@@ -225,7 +242,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         }
 
         if (be.targetId != prevTargetId || be.isFiring != prevFiring
-                || be.visualHasEnergy != prevHasEnergy) {
+                || be.visualHasEnergy != prevHasEnergy || be.aimDriftedSinceSync()) {
             be.markUpdated();
         }
     }
@@ -289,8 +306,24 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             // Reset invulnerability to ensure damage is applied
             monster.invulnerableTime = 0;
             monster.hurt(level.damageSources().explosion(null, null), damage);
+            if (hasUpgrade(TurretUpgradeType.ARMOR_BREAK)) {
+                float armorCrackDamage = Math.min(18.0f, damage * 0.18f + monster.getArmorValue() * 1.35f);
+                if (armorCrackDamage > 0) {
+                    monster.invulnerableTime = 0;
+                    monster.hurt(level.damageSources().magic(), armorCrackDamage);
+                }
+                monster.addEffect(new MobEffectInstance(MobEffects.GLOWING, 160, 0, true, true));
+            }
             Vec3 knockDir = monster.position().subtract(targetPos).normalize();
             monster.setDeltaMovement(monster.getDeltaMovement().add(knockDir.x * 1.5, 0.5, knockDir.z * 1.5));
+            if (hasUpgrade(TurretUpgradeType.SEISMIC_SHOCK)) {
+                monster.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 120, 1, true, true));
+                monster.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 120, 0, true, true));
+            }
+        }
+
+        if (hasUpgrade(TurretUpgradeType.CLUSTER_SHELLS)) {
+            clusterShells(level, targetPos, explosionRadius, damage * 0.35f);
         }
 
         // Enhanced Red Alert style explosion
@@ -302,6 +335,36 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         // Impact sound (vanilla, moderate volume)
         TurretVisualEffects.playTurretSound(level, BlockPos.containing(targetPos),
             SoundEvents.GENERIC_EXPLODE, 1.0f, 0.8f, 0.15f);
+    }
+
+    private void clusterShells(Level level, Vec3 targetPos, double mainRadius, float damage) {
+        double clusterRadius = Math.max(2.0, mainRadius * 0.45);
+        Vec3[] offsets = {
+                new Vec3(clusterRadius, 0, 0),
+                new Vec3(-clusterRadius, 0, 0),
+                new Vec3(0, 0, clusterRadius),
+                new Vec3(0, 0, -clusterRadius)
+        };
+
+        for (Vec3 offset : offsets) {
+            Vec3 center = targetPos.add(offset);
+            AABB damageArea = new AABB(center.x - clusterRadius, center.y - clusterRadius, center.z - clusterRadius,
+                    center.x + clusterRadius, center.y + clusterRadius, center.z + clusterRadius);
+            List<Monster> monsters = level.getEntitiesOfClass(Monster.class, damageArea, monster ->
+                    monster.isAlive()
+                            && monster.position().distanceTo(center) <= clusterRadius
+                            && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !monster.hasCustomName()));
+            for (Monster monster : monsters) {
+                monster.invulnerableTime = 0;
+                monster.hurt(level.damageSources().explosion(null, null), damage);
+            }
+            if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                serverLevel.sendParticles(ParticleTypes.EXPLOSION, center.x, center.y, center.z,
+                        1, 0.0, 0.0, 0.0, 0.0);
+                serverLevel.sendParticles(ParticleTypes.SMOKE, center.x, center.y + 0.25, center.z,
+                        12, clusterRadius * 0.25, 0.35, clusterRadius * 0.25, 0.02);
+            }
+        }
     }
 
     @Override

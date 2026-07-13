@@ -36,12 +36,34 @@ public class GatlingTurretModel extends GeoModel<GatlingTurretBlockEntity> {
         if (animatable.getLevel() == null)
             return;
 
-        if (mount != null && gun != null && animatable.visualTargetId != -1) {
-            Entity target = animatable.getLevel().getEntity(animatable.visualTargetId);
-            if (target != null) {
-                double dx = target.getX() - (animatable.getBlockPos().getX() + 0.5);
-                double dy = target.getEyeY() - (animatable.getBlockPos().getY() + 1.5);
-                double dz = target.getZ() - (animatable.getBlockPos().getZ() + 0.5);
+        if (mount != null && gun != null) {
+            double tx = 0, ty = 0, tz = 0;
+            boolean haveAim = false;
+
+            // Prefer the live target entity for smooth per-frame tracking, but only
+            // if this client actually has it loaded. In multiplayer a distant client
+            // may not track the mob, so fall back to the server-synced aim point,
+            // which keeps the barrel oriented correctly instead of frozen.
+            if (animatable.visualTargetId != -1) {
+                Entity target = animatable.getLevel().getEntity(animatable.visualTargetId);
+                if (target != null) {
+                    tx = target.getX();
+                    ty = target.getEyeY();
+                    tz = target.getZ();
+                    haveAim = true;
+                }
+            }
+            if (!haveAim && animatable.hasAimTarget()) {
+                tx = animatable.getAimTargetX();
+                ty = animatable.getAimTargetY();
+                tz = animatable.getAimTargetZ();
+                haveAim = true;
+            }
+
+            if (haveAim) {
+                double dx = tx - (animatable.getBlockPos().getX() + 0.5);
+                double dy = ty - (animatable.getBlockPos().getY() + 1.5);
+                double dz = tz - (animatable.getBlockPos().getZ() + 0.5);
                 double dist = Math.sqrt(dx * dx + dz * dz);
                 mount.setRotY(-(float) Math.atan2(dx, -dz));
                 gun.setRotX((float) Math.atan2(dy, dist));

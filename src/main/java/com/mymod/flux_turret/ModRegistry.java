@@ -31,6 +31,8 @@ import com.mymod.flux_turret.block.entity.PsychicBeaconBlockEntity;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
 import com.mymod.flux_turret.item.EmptyCrystalItem;
 import com.mymod.flux_turret.item.EnergyCrystalItem;
+import com.mymod.flux_turret.item.TurretUpgradeModuleItem;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.menu.PsychicBeaconMenu;
 
 public class ModRegistry {
@@ -81,11 +83,15 @@ public class ModRegistry {
 
         public static final RegistryObject<Block> ENERGY_CRYSTAL_BLOCK = BLOCKS.register("energy_crystal",
                         () -> new EnergyCrystalBlock(BlockBehaviour.Properties.of().strength(3.0f).sound(SoundType.AMETHYST)
-                                        .noOcclusion().lightLevel(state -> 8)));
+                                        .noOcclusion().lightLevel(state -> state.getValue(EnergyCrystalBlock.FULL) ? 6 : 0)));
+
+        public static final RegistryObject<Block> EMPOWERED_ENERGY_CRYSTAL_BLOCK = BLOCKS.register("empowered_energy_crystal",
+                        () -> new EnergyCrystalBlock(BlockBehaviour.Properties.of().strength(4.0f).sound(SoundType.AMETHYST)
+                                        .noOcclusion().lightLevel(state -> state.getValue(EnergyCrystalBlock.FULL) ? 10 : 0), 10));
 
         public static final RegistryObject<Block> PSYCHIC_BEACON_BLOCK = BLOCKS.register("psychic_beacon",
                         () -> new PsychicBeaconBlock(BlockBehaviour.Properties.of().strength(5.0f).sound(SoundType.METAL)
-                                        .noOcclusion().lightLevel(state -> state.getValue(PsychicBeaconBlock.LIT) ? 10 : 0)));
+                                        .noOcclusion().lightLevel(state -> state.getValue(PsychicBeaconBlock.LIT) ? 6 : 0)));
  
         public static final RegistryObject<Item> PRISM_TOWER_ITEM = ITEMS.register("prism_tower",
                         () -> new BlockItem(PRISM_TOWER_BLOCK.get(), new Item.Properties()));
@@ -102,11 +108,50 @@ public class ModRegistry {
         public static final RegistryObject<Item> ENERGY_CRYSTAL_ITEM = ITEMS.register("energy_crystal",
                         () -> new EnergyCrystalItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
 
+        public static final RegistryObject<Item> EMPOWERED_ENERGY_CRYSTAL_ITEM = ITEMS.register("empowered_energy_crystal",
+                        () -> new EnergyCrystalItem(EMPOWERED_ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
+
         public static final RegistryObject<Item> EMPTY_CRYSTAL_ITEM = ITEMS.register("empty_crystal",
                         () -> new EmptyCrystalItem(ENERGY_CRYSTAL_BLOCK.get(), new Item.Properties()));
 
         public static final RegistryObject<Item> PSYCHIC_BEACON_ITEM = ITEMS.register("psychic_beacon",
                         () -> new BlockItem(PSYCHIC_BEACON_BLOCK.get(), new Item.Properties()));
+
+        public static final RegistryObject<Item> ARMOR_PIERCING_ROUNDS_MODULE = ITEMS.register("armor_piercing_rounds_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.ARMOR_PIERCING_ROUNDS, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> FIRE_ROUNDS_MODULE = ITEMS.register("fire_rounds_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.FIRE_ROUNDS, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> SLOW_ROUNDS_MODULE = ITEMS.register("slow_rounds_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.SLOW_ROUNDS, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> CHAIN_JUMP_MODULE = ITEMS.register("chain_jump_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.CHAIN_JUMP, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> EMP_SLOW_MODULE = ITEMS.register("emp_slow_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.EMP_SLOW, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> OVERLOAD_BURST_MODULE = ITEMS.register("overload_burst_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.OVERLOAD_BURST, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> FOCUSED_BEAM_MODULE = ITEMS.register("focused_beam_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.FOCUSED_BEAM, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> REFRACTION_BEAM_MODULE = ITEMS.register("refraction_beam_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.REFRACTION_BEAM, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> REMOTE_SUPPORT_MODULE = ITEMS.register("remote_support_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.REMOTE_SUPPORT, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> SEISMIC_SHOCK_MODULE = ITEMS.register("seismic_shock_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.SEISMIC_SHOCK, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> ARMOR_BREAK_MODULE = ITEMS.register("armor_break_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.ARMOR_BREAK, new Item.Properties().stacksTo(16)));
+
+        public static final RegistryObject<Item> CLUSTER_SHELLS_MODULE = ITEMS.register("cluster_shells_module",
+                        () -> new TurretUpgradeModuleItem(TurretUpgradeType.CLUSTER_SHELLS, new Item.Properties().stacksTo(16)));
  
         public static final RegistryObject<BlockEntityType<PrismTowerBlockEntity>> PRISM_TOWER_BE = BLOCK_ENTITY_TYPES
                         .register("prism_tower", () -> BlockEntityType.Builder
@@ -126,7 +171,8 @@ public class ModRegistry {
 
         public static final RegistryObject<BlockEntityType<EnergyCrystalBlockEntity>> ENERGY_CRYSTAL_BE = BLOCK_ENTITY_TYPES
                         .register("energy_crystal", () -> BlockEntityType.Builder
-                                        .of(EnergyCrystalBlockEntity::new, ENERGY_CRYSTAL_BLOCK.get()).build(null));
+                                        .of(EnergyCrystalBlockEntity::new, ENERGY_CRYSTAL_BLOCK.get(),
+                                                        EMPOWERED_ENERGY_CRYSTAL_BLOCK.get()).build(null));
 
         public static final RegistryObject<BlockEntityType<PsychicBeaconBlockEntity>> PSYCHIC_BEACON_BE = BLOCK_ENTITY_TYPES
                         .register("psychic_beacon", () -> BlockEntityType.Builder
@@ -147,7 +193,20 @@ public class ModRegistry {
                                                 output.accept(GRAND_CANNON_ITEM.get());
                                                 output.accept(EMPTY_CRYSTAL_ITEM.get());
                                                 output.accept(ENERGY_CRYSTAL_ITEM.get());
+                                                output.accept(EMPOWERED_ENERGY_CRYSTAL_ITEM.get());
                                                 output.accept(PSYCHIC_BEACON_ITEM.get());
+                                                output.accept(ARMOR_PIERCING_ROUNDS_MODULE.get());
+                                                output.accept(FIRE_ROUNDS_MODULE.get());
+                                                output.accept(SLOW_ROUNDS_MODULE.get());
+                                                output.accept(CHAIN_JUMP_MODULE.get());
+                                                output.accept(EMP_SLOW_MODULE.get());
+                                                output.accept(OVERLOAD_BURST_MODULE.get());
+                                                output.accept(FOCUSED_BEAM_MODULE.get());
+                                                output.accept(REFRACTION_BEAM_MODULE.get());
+                                                output.accept(REMOTE_SUPPORT_MODULE.get());
+                                                output.accept(SEISMIC_SHOCK_MODULE.get());
+                                                output.accept(ARMOR_BREAK_MODULE.get());
+                                                output.accept(CLUSTER_SHELLS_MODULE.get());
                                         }).build());
  
         public static void register(IEventBus eventBus) {

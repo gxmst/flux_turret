@@ -1,6 +1,7 @@
 package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -59,6 +60,18 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     protected long lastFireTime = 0;
     protected int tickCounter = 0;
     protected List<Monster> monsterCache = List.of();
+    private int upgradeMask = 0;
+
+    // Server-authoritative aim point (world coords of the current target). Synced to
+    // clients so aiming models (Gatling, Grand Cannon) can orient correctly even when
+    // the target entity itself isn't tracked by that client — in multiplayer a far
+    // client may not have the mob loaded, and client-side getEntity() would return null,
+    // freezing the barrel at its last pose. When a target is present the client prefers
+    // the live entity (for smooth per-frame tracking) and falls back to this point.
+    public float aimTargetX = 0f;
+    public float aimTargetY = 0f;
+    public float aimTargetZ = 0f;
+    public boolean hasAimTarget = false;
 
     private final TurretEnergyStorage energyStorage;
     private LazyOptional<IEnergyStorage> energyHandler;
@@ -141,6 +154,13 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         tag.putBoolean("IsFiring", isFiring);
         tag.putLong("LastFireTime", lastFireTime);
         tag.putBoolean("HasPower", visualHasEnergy);
+        tag.putInt("UpgradeMask", upgradeMask);
+        tag.putBoolean("HasAim", hasAimTarget);
+        if (hasAimTarget) {
+            tag.putFloat("AimX", aimTargetX);
+            tag.putFloat("AimY", aimTargetY);
+            tag.putFloat("AimZ", aimTargetZ);
+        }
         saveAdditionalTurret(tag);
     }
 
@@ -152,6 +172,13 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         isFiring = tag.getBoolean("IsFiring");
         lastFireTime = tag.getLong("LastFireTime");
         visualHasEnergy = tag.getBoolean("HasPower");
+        upgradeMask = tag.getInt("UpgradeMask");
+        hasAimTarget = tag.getBoolean("HasAim");
+        if (hasAimTarget) {
+            aimTargetX = tag.getFloat("AimX");
+            aimTargetY = tag.getFloat("AimY");
+            aimTargetZ = tag.getFloat("AimZ");
+        }
         loadAdditionalTurret(tag);
     }
 
@@ -231,9 +258,30 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     }
 
     protected void refreshMonsterCache(Level level, BlockPos pos) {
+        // Read the config flag once per scan rather than once per candidate entity.
+        final boolean friendlyFire = TurretConfig.FRIENDLY_FIRE_PROTECTION.get();
         AABB scanArea = new AABB(pos).inflate(getTargetRange());
-        monsterCache = level.getEntitiesOfClass(Monster.class, scanArea,
-                m -> m.isAlive() && !m.isRemoved() && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !m.hasCustomName()));
+
+        // On the server, source candidates from the per-tick shared column index so
+        // overlapping turrets don't each re-scan the same region. The cache returns
+        // the same monsters a direct AABB query would; we still apply the alive /
+        // friendly-fire predicate here so the filtered set is identical. Fall back to
+        // a direct scan off the server thread (should not happen for tick logic).
+        List<Monster> candidates;
+        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            candidates = com.mymod.flux_turret.util.TurretScanCache.get(serverLevel).query(serverLevel, scanArea);
+        } else {
+            candidates = level.getEntitiesOfClass(Monster.class, scanArea);
+        }
+
+        List<Monster> filtered = new java.util.ArrayList<>(candidates.size());
+        for (int i = 0; i < candidates.size(); i++) {
+            Monster m = candidates.get(i);
+            if (m.isAlive() && !m.isRemoved() && (!friendlyFire || !m.hasCustomName())) {
+                filtered.add(m);
+            }
+        }
+        monsterCache = filtered;
 
         double x = pos.getX() + 0.5;
         double y = pos.getY() + getEyeHeight();
@@ -318,9 +366,36 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         return targetId;
     }
 
+    // Aim point last pushed to clients; lets us resync only when the barrel would
+    // visibly drift, instead of every tick a target moves.
+    private float syncedAimX = 0f;
+    private float syncedAimY = 0f;
+    private float syncedAimZ = 0f;
+    private boolean syncedHasAim = false;
+    private static final double AIM_RESYNC_DISTANCE_SQR = 1.5 * 1.5;
+
+    /**
+     * True when the aim point has changed enough since the last sync to be worth
+     * pushing again: the target appeared/disappeared, or moved more than ~1.5 blocks.
+     * A moving target changes aim every tick, but the fallback orientation doesn't
+     * need per-tick precision, so this caps aim-driven resyncs.
+     */
+    protected boolean aimDriftedSinceSync() {
+        if (hasAimTarget != syncedHasAim) return true;
+        if (!hasAimTarget) return false;
+        double dx = aimTargetX - syncedAimX;
+        double dy = aimTargetY - syncedAimY;
+        double dz = aimTargetZ - syncedAimZ;
+        return dx * dx + dy * dy + dz * dz > AIM_RESYNC_DISTANCE_SQR;
+    }
+
     /** Mark dirty and push a block-entity sync to tracking clients. */
     protected void markUpdated() {
         setChanged();
+        syncedAimX = aimTargetX;
+        syncedAimY = aimTargetY;
+        syncedAimZ = aimTargetZ;
+        syncedHasAim = hasAimTarget;
         if (level != null) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
         }
@@ -332,6 +407,59 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
 
     public int getEnergyStored() {
         return energyStorage.getEnergyStored();
+    }
+
+    /**
+     * Server-side: record the world-space point this turret is aiming at, so the
+     * client can orient the model even when the target entity isn't loaded on that
+     * client (multiplayer, entity outside the player's tracking range). Stored as
+     * the raw target point rather than yaw/pitch because each turret model rotates
+     * around its own pivot; the model computes its own angles from this point.
+     */
+    protected void setAimTarget(double x, double y, double z) {
+        this.aimTargetX = (float) x;
+        this.aimTargetY = (float) y;
+        this.aimTargetZ = (float) z;
+        this.hasAimTarget = true;
+    }
+
+    /** Server-side: clear the aim point when the turret has no target. */
+    protected void clearAimTarget() {
+        this.hasAimTarget = false;
+    }
+
+    public boolean hasAimTarget() {
+        return hasAimTarget;
+    }
+
+    public float getAimTargetX() {
+        return aimTargetX;
+    }
+
+    public float getAimTargetY() {
+        return aimTargetY;
+    }
+
+    public float getAimTargetZ() {
+        return aimTargetZ;
+    }
+
+    public boolean hasUpgrade(TurretUpgradeType type) {
+        return (upgradeMask & type.getMask()) != 0;
+    }
+
+    /** Client-visible: any upgrade module installed? Drives the pulsing upgrade glow layer. */
+    public boolean hasAnyUpgrade() {
+        return upgradeMask != 0;
+    }
+
+    public void installUpgrade(TurretUpgradeType type) {
+        upgradeMask |= type.getMask();
+        markUpdated();
+    }
+
+    public boolean canInstallUpgrade(TurretUpgradeType type) {
+        return false;
     }
 
     @Override

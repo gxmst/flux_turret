@@ -2,6 +2,7 @@ package com.mymod.flux_turret.block;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
+import com.mymod.flux_turret.item.TurretUpgradeModuleItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvents;
@@ -30,6 +31,11 @@ public class PrismTowerBlock extends TurretBlockBase {
         BlockEntity be = level.getBlockEntity(pos);
 
         if (be instanceof PrismTowerBlockEntity prism) {
+            InteractionResult upgradeResult = TurretUpgradeModuleItem.tryInstall(level, pos, player, hand, be);
+            if (upgradeResult != InteractionResult.PASS) {
+                return upgradeResult;
+            }
+
             if (stack.getItem() instanceof DyeItem dyeItem) {
                 if (!level.isClientSide) {
                     DyeColor color = dyeItem.getDyeColor();

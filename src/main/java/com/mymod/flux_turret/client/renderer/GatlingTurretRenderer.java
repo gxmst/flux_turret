@@ -12,12 +12,15 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import software.bernie.geckolib.renderer.GeoBlockRenderer;
+import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 
 public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretBlockEntity> {
     private final GeoBlockRenderer<GatlingTurretBlockEntity> geckoRenderer;
 
     public GatlingTurretRenderer(BlockEntityRendererProvider.Context context) {
         this.geckoRenderer = new GeoBlockRenderer<>(new GatlingTurretModel());
+        this.geckoRenderer.addRenderLayer(new AutoGlowingGeoLayer<>(this.geckoRenderer));
+        this.geckoRenderer.addRenderLayer(new UpgradeGlowLayer<>(this.geckoRenderer));
     }
 
     @Override

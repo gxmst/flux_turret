@@ -17,6 +17,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.phys.BlockHitResult;
@@ -26,8 +28,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class EnergyCrystalBlock extends BaseEntityBlock {
+    public static final BooleanProperty FULL = BooleanProperty.create("full");
+    private final int energyMultiplier;
+
     public EnergyCrystalBlock(Properties properties) {
+        this(properties, 1);
+    }
+
+    public EnergyCrystalBlock(Properties properties, int energyMultiplier) {
         super(properties);
+        this.energyMultiplier = Math.max(1, energyMultiplier);
+        this.registerDefaultState(this.stateDefinition.any().setValue(FULL, false));
+    }
+
+    public int getEnergyMultiplier() {
+        return energyMultiplier;
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<net.minecraft.world.level.block.Block, BlockState> builder) {
+        builder.add(FULL);
     }
 
     @Nullable
@@ -55,8 +75,8 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
 
             InteractionResult chargeResult = ChargeHelper.tryRedstoneCharge(
                     level, pos, state, player, heldItem, be.getEnergyStorage(),
-                    TurretConfig.ENERGY_CRYSTAL_REDSTONE_CHARGE.get(),
-                    TurretConfig.ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE.get());
+                    TurretConfig.ENERGY_CRYSTAL_REDSTONE_CHARGE.get() * be.getEnergyMultiplier(),
+                    TurretConfig.ENERGY_CRYSTAL_REDSTONE_BLOCK_CHARGE.get() * be.getEnergyMultiplier());
             if (chargeResult != null) {
                 be.setChanged();
                 return chargeResult;
@@ -81,11 +101,17 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
         if (be instanceof EnergyCrystalBlockEntity crystalBe) {
             int energy = crystalBe.getEnergyStorage().getEnergyStored();
             if (energy <= 0) {
-                // Completely empty crystal drops the Depleted Empty Crystal item!
-                drops.add(new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get()));
+                if (crystalBe.isEmpowered()) {
+                    drops.add(EnergyCrystalItem.createChargedStack(ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get(), 0));
+                } else {
+                    // Completely empty normal crystal drops the Depleted Empty Crystal item.
+                    drops.add(new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get()));
+                }
             } else {
                 // Charged crystal drops the charged crystal block item with energy NBT intact!
-                drops.add(EnergyCrystalItem.createChargedStack(energy));
+                drops.add(EnergyCrystalItem.createChargedStack(crystalBe.isEmpowered()
+                        ? ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get()
+                        : ModRegistry.ENERGY_CRYSTAL_ITEM.get(), energy));
             }
         } else {
             drops.add(new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get()));
@@ -113,9 +139,13 @@ public class EnergyCrystalBlock extends BaseEntityBlock {
         if (level.getBlockEntity(pos) instanceof EnergyCrystalBlockEntity be) {
             int remaining = be.getEnergyStorage().getEnergyStored();
             if (remaining <= 0) {
-                return new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get());
+                return be.isEmpowered()
+                        ? EnergyCrystalItem.createChargedStack(ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get(), 0)
+                        : new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get());
             }
-            return EnergyCrystalItem.createChargedStack(remaining);
+            return EnergyCrystalItem.createChargedStack(be.isEmpowered()
+                    ? ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get()
+                    : ModRegistry.ENERGY_CRYSTAL_ITEM.get(), remaining);
         }
         return new ItemStack(ModRegistry.EMPTY_CRYSTAL_ITEM.get());
     }

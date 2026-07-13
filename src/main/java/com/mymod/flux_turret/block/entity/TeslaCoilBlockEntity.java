@@ -2,11 +2,15 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -18,6 +22,9 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     private static final int WARMUP_TICKS = 8;
     private static final int ATTACK_COOLDOWN = 24;
     private static final int TARGET_CACHE_INTERVAL = 12;
+    private static final int CHAIN_JUMP_LIMIT = 5;
+    private static final double CHAIN_JUMP_RANGE = 9.0;
+    private static final double OVERLOAD_BURST_RANGE = 4.5;
 
     private int warmupTicks = 0;
     private int overchargeTicks = 0;
@@ -67,6 +74,13 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     @Override
     protected int getMinOperatingCost() {
         return TurretConfig.TESLA_FIRE_COST.get();
+    }
+
+    @Override
+    public boolean canInstallUpgrade(TurretUpgradeType type) {
+        return type == TurretUpgradeType.CHAIN_JUMP
+                || type == TurretUpgradeType.EMP_SLOW
+                || type == TurretUpgradeType.OVERLOAD_BURST;
     }
 
     @Override
@@ -168,6 +182,15 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                         // Reset invulnerability to ensure damage is applied
                         target.invulnerableTime = 0;
                         target.hurt(level.damageSources().magic(), finalDamage);
+                        if (be.hasUpgrade(TurretUpgradeType.EMP_SLOW)) {
+                            be.applyEmpSlow(target);
+                        }
+                        if (be.hasUpgrade(TurretUpgradeType.CHAIN_JUMP)) {
+                            be.chainLightning(level, target, finalDamage * 0.65f);
+                        }
+                        if (be.hasUpgrade(TurretUpgradeType.OVERLOAD_BURST)) {
+                            be.overloadBurst(level, target, finalDamage * 0.35f);
+                        }
 
                         // Enhanced Red Alert style electric arc
                         Vec3 coilTop = Vec3.atCenterOf(pos).add(0, 2.5, 0);
@@ -202,6 +225,60 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                 || prevOvercharged != nowOvercharged) {
             be.markUpdated();
         }
+    }
+
+    private void chainLightning(Level level, Monster primaryTarget, float damage) {
+        java.util.Set<Integer> hitIds = new java.util.HashSet<>();
+        hitIds.add(primaryTarget.getId());
+        Vec3 previous = primaryTarget.position().add(0, primaryTarget.getBbHeight() * 0.5, 0);
+
+        for (int i = 0; i < CHAIN_JUMP_LIMIT; i++) {
+            Vec3 jumpOrigin = previous;
+            AABB chainArea = new AABB(jumpOrigin, jumpOrigin).inflate(CHAIN_JUMP_RANGE);
+            Monster next = level.getEntitiesOfClass(Monster.class, chainArea, monster ->
+                    !hitIds.contains(monster.getId()) && monster.isAlive() && !monster.isRemoved()
+                            && monster.position().distanceTo(jumpOrigin) <= CHAIN_JUMP_RANGE
+                            && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !monster.hasCustomName()))
+                    .stream()
+                    .min(java.util.Comparator.comparingDouble(monster -> monster.position().distanceToSqr(jumpOrigin)))
+                    .orElse(null);
+            if (next == null) {
+                break;
+            }
+            hitIds.add(next.getId());
+            next.invulnerableTime = 0;
+            next.hurt(level.damageSources().magic(), damage);
+            if (hasUpgrade(TurretUpgradeType.EMP_SLOW)) {
+                applyEmpSlow(next);
+            }
+            Vec3 nextPos = next.position().add(0, next.getBbHeight() * 0.5, 0);
+            TurretVisualEffects.spawnElectricArc(level, previous, nextPos);
+            previous = nextPos;
+            damage *= 0.72f;
+        }
+    }
+
+    private void overloadBurst(Level level, Monster primaryTarget, float damage) {
+        Vec3 center = primaryTarget.position().add(0, primaryTarget.getBbHeight() * 0.5, 0);
+        AABB burstArea = primaryTarget.getBoundingBox().inflate(OVERLOAD_BURST_RANGE);
+        java.util.List<Monster> burstTargets = level.getEntitiesOfClass(Monster.class, burstArea, monster ->
+                monster != primaryTarget && monster.isAlive() && !monster.isRemoved()
+                        && monster.position().distanceTo(center) <= OVERLOAD_BURST_RANGE
+                        && (!TurretConfig.FRIENDLY_FIRE_PROTECTION.get() || !monster.hasCustomName()));
+        for (Monster monster : burstTargets) {
+            monster.invulnerableTime = 0;
+            monster.hurt(level.damageSources().magic(), damage);
+            applyEmpSlow(monster);
+        }
+        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            serverLevel.sendParticles(ParticleTypes.ELECTRIC_SPARK, center.x, center.y, center.z,
+                    32, OVERLOAD_BURST_RANGE * 0.35, 0.45, OVERLOAD_BURST_RANGE * 0.35, 0.08);
+        }
+    }
+
+    private void applyEmpSlow(Monster monster) {
+        monster.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 100, 1, true, true));
+        monster.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 80, 0, true, true));
     }
 
     @Override
