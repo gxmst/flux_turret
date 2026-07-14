@@ -1,5 +1,5 @@
 {
-    "type": "minecraft:smelting",
+    "type": "flux_turret:furnace_charged_crystal",
     "ingredient": {
         "item": "flux_turret:empty_crystal"
     },

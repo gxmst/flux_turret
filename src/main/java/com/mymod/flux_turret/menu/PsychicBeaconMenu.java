@@ -17,7 +17,7 @@ import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.item.ItemStack;
 
 public class PsychicBeaconMenu extends AbstractContainerMenu {
-    private static final int DATA_SIZE = 19;
+    private static final int DATA_SIZE = 29;
     private static final int ENERGY_LOW = 0;
     private static final int ENERGY_HIGH = 1;
     private static final int MAX_ENERGY_LOW = 2;
@@ -37,6 +37,16 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
     private static final int LAST_BATTLE_SCORE_LOW = 16;
     private static final int LAST_BATTLE_SCORE_HIGH = 17;
     private static final int BATTLE_IN_PROGRESS = 18;
+    private static final int REQUIRED_KILLS = 19;
+    private static final int MISSING_STRUCTURE_BLOCKS = 20;
+    private static final int FIRST_MISSING_DX = 21;
+    private static final int FIRST_MISSING_DY = 22;
+    private static final int FIRST_MISSING_DZ = 23;
+    private static final int PENDING_REWARD_STATUS = 24;
+    private static final int REQUIRED_ENERGY_LOW = 25;
+    private static final int REQUIRED_ENERGY_HIGH = 26;
+    private static final int BLOCKED_BY_REDSTONE = 27;
+    private static final int NEARBY_CANNON = 28;
 
     private final PsychicBeaconBlockEntity beacon;
     private final BlockPos beaconPos;
@@ -98,6 +108,10 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         return data.get(NEARBY_GATLING);
     }
 
+    public int getNearbyCannonCount() {
+        return data.get(NEARBY_CANNON);
+    }
+
     public int getEnabled() {
         return data.get(ENABLED);
     }
@@ -120,6 +134,38 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
 
     public boolean isBattleInProgress() {
         return data.get(BATTLE_IN_PROGRESS) != 0;
+    }
+
+    public int getRequiredKills() {
+        return data.get(REQUIRED_KILLS);
+    }
+
+    public int getMissingStructureBlocks() {
+        return data.get(MISSING_STRUCTURE_BLOCKS);
+    }
+
+    public int getFirstMissingX() {
+        return beaconPos.getX() + data.get(FIRST_MISSING_DX);
+    }
+
+    public int getFirstMissingY() {
+        return beaconPos.getY() + data.get(FIRST_MISSING_DY);
+    }
+
+    public int getFirstMissingZ() {
+        return beaconPos.getZ() + data.get(FIRST_MISSING_DZ);
+    }
+
+    public int getPendingRewardStatus() {
+        return data.get(PENDING_REWARD_STATUS);
+    }
+
+    public int getRequiredEnergyThroughReward() {
+        return getWideValue(REQUIRED_ENERGY_LOW);
+    }
+
+    public boolean isBlockedByRedstone() {
+        return data.get(BLOCKED_BY_REDSTONE) != 0;
     }
 
     public PsychicBeaconBlockEntity getBeacon() {
@@ -163,12 +209,21 @@ public class PsychicBeaconMenu extends AbstractContainerMenu {
         data.set(NEARBY_PRISM, cached[0]);
         data.set(NEARBY_TESLA, cached[1]);
         data.set(NEARBY_GATLING, cached[2]);
+        data.set(NEARBY_CANNON, cached[3]);
         data.set(ENABLED, beacon.isEnabled() ? 1 : 0);
         data.set(SELECTED_BUFF_MASK, beacon.getSelectedBuffMask());
         data.set(DOCTRINE, beacon.getDoctrine());
         data.set(ACTIVE_AFFIX, beacon.getActiveWaveAffix());
         setWideValue(LAST_BATTLE_SCORE_LOW, beacon.getLastBattleScore());
         data.set(BATTLE_IN_PROGRESS, beacon.isBattleInProgress() ? 1 : 0);
+        data.set(REQUIRED_KILLS, beacon.getRequiredKillsForCurrentBattle());
+        data.set(MISSING_STRUCTURE_BLOCKS, beacon.getMissingStructureBlocks());
+        data.set(FIRST_MISSING_DX, beacon.getFirstMissingStructureDx());
+        data.set(FIRST_MISSING_DY, beacon.getFirstMissingStructureDy());
+        data.set(FIRST_MISSING_DZ, beacon.getFirstMissingStructureDz());
+        data.set(PENDING_REWARD_STATUS, beacon.getPendingRewardStatus());
+        setWideValue(REQUIRED_ENERGY_LOW, beacon.getRequiredEnergyThroughReward());
+        data.set(BLOCKED_BY_REDSTONE, beacon.isBlockedByRedstone() ? 1 : 0);
         super.broadcastChanges();
     }
 

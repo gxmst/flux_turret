@@ -5,6 +5,8 @@ import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
 import com.mymod.flux_turret.item.TurretUpgradeModuleItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -29,6 +31,7 @@ import java.util.Locale;
 public class GrandCannonBlock extends BaseEntityBlock {
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
     public static final EnumProperty<CannonPart> PART = EnumProperty.create("part", CannonPart.class);
+    private static final String PORTABLE_DROP_SNAPSHOT = "flux_turret:portable_drop_snapshot";
 
     public GrandCannonBlock(Properties properties) {
         super(properties);
@@ -51,6 +54,10 @@ public class GrandCannonBlock extends BaseEntityBlock {
         for (CannonPart part : CannonPart.values()) {
             BlockPos checkPos = part.offset(pos, facing);
             if (!level.getBlockState(checkPos).canBeReplaced(context)) {
+                if (context.getPlayer() != null && level.isClientSide) {
+                    context.getPlayer().displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                            "message.flux_turret.placement_blocked", checkPos.toShortString()), true);
+                }
                 return null;
             }
         }
@@ -74,6 +81,7 @@ public class GrandCannonBlock extends BaseEntityBlock {
         BlockEntity be = level.getBlockEntity(pos);
         if (be instanceof GrandCannonBlockEntity cannon) {
             cannon.setFormed(true);
+            if (placer instanceof Player player) cannon.claimIfUnowned(player);
         }
     }
 
@@ -125,16 +133,64 @@ public class GrandCannonBlock extends BaseEntityBlock {
                 return upgradeResult;
             }
 
-            net.minecraft.network.chat.Component formed = net.minecraft.network.chat.Component.translatable(
-                    cannon.isFormed() ? "message.flux_turret.formed_yes" : "message.flux_turret.formed_no");
-            player.displayClientMessage(
-                    net.minecraft.network.chat.Component.translatable(
-                            "message.flux_turret.cannon_status",
-                            cannon.getEnergyStored(), cannon.getEnergyCapacity(), formed),
-                    true);
-            return InteractionResult.CONSUME;
+            if (hand == net.minecraft.world.InteractionHand.MAIN_HAND
+                    && player.getItemInHand(hand).isEmpty() && !player.isShiftKeyDown()) {
+                if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                    com.mymod.flux_turret.menu.TurretInspectorMenu.open(serverPlayer, cannon);
+                }
+                return InteractionResult.CONSUME;
+            }
         }
         return InteractionResult.PASS;
+    }
+
+    @Override
+    public void playerWillDestroy(Level level, BlockPos pos, BlockState state, Player player) {
+        // Player loot is evaluated after onRemove. Removing a generated part tears down
+        // the core first, so preserve the core's portable data on the captured part BE
+        // that vanilla later supplies to getDrops. This keeps the normal harvest and
+        // creative-mode rules instead of spawning an unconditional manual drop.
+        if (!level.isClientSide && !player.isCreative()
+                && state.hasProperty(PART) && state.hasProperty(FACING)
+                && state.getValue(PART) != CannonPart.BACK_LEFT
+                && level.getBlockEntity(pos) instanceof GrandCannonBlockEntity partEntity) {
+            BlockPos corePos = state.getValue(PART).getCorePos(pos, state.getValue(FACING));
+            if (level.getBlockEntity(corePos) instanceof GrandCannonBlockEntity coreEntity) {
+                CompoundTag snapshot = new CompoundTag();
+                coreEntity.savePortableData(snapshot);
+                partEntity.getPersistentData().put(PORTABLE_DROP_SNAPSHOT, snapshot);
+            }
+        }
+        super.playerWillDestroy(level, pos, state, player);
+    }
+
+    @Override
+    public java.util.List<net.minecraft.world.item.ItemStack> getDrops(BlockState state,
+            net.minecraft.world.level.storage.loot.LootParams.Builder builder) {
+        BlockEntity blockEntity = builder.getOptionalParameter(
+                net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY);
+        GrandCannonBlockEntity cannon = blockEntity instanceof GrandCannonBlockEntity direct ? direct : null;
+        CompoundTag portableSnapshot = cannon != null
+                && cannon.getPersistentData().contains(PORTABLE_DROP_SNAPSHOT, Tag.TAG_COMPOUND)
+                ? cannon.getPersistentData().getCompound(PORTABLE_DROP_SNAPSHOT).copy()
+                : null;
+        if (portableSnapshot == null && cannon != null
+                && state.hasProperty(PART) && state.hasProperty(FACING)
+                && state.getValue(PART) != CannonPart.BACK_LEFT && cannon.getLevel() != null) {
+            BlockPos corePos = state.getValue(PART).getCorePos(cannon.getBlockPos(), state.getValue(FACING));
+            if (cannon.getLevel().getBlockEntity(corePos) instanceof GrandCannonBlockEntity core) cannon = core;
+        }
+        java.util.List<net.minecraft.world.item.ItemStack> drops = super.getDrops(state, builder);
+        if (cannon != null) {
+            for (net.minecraft.world.item.ItemStack stack : drops) {
+                if (stack.is(this.asItem())) {
+                    CompoundTag blockEntityTag = stack.getOrCreateTagElement("BlockEntityTag");
+                    if (portableSnapshot != null) blockEntityTag.merge(portableSnapshot.copy());
+                    else cannon.savePortableData(blockEntityTag);
+                }
+            }
+        }
+        return drops;
     }
 
     @Override

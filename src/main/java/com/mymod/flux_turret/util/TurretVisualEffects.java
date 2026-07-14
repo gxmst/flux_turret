@@ -6,8 +6,11 @@ import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
 import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
 import com.mymod.flux_turret.block.entity.TurretBlockEntityBase;
+import com.mymod.flux_turret.client.ClientImpactEffects;
+import com.mymod.flux_turret.client.TurretClientConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
@@ -16,6 +19,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 
 /**
@@ -24,6 +28,12 @@ import java.util.List;
 public class TurretVisualEffects {
     public static final int EFFECT_OVERLOAD_BURST = 1;
     public static final int EFFECT_CLUSTER_SHELLS = 1 << 1;
+
+    private static WeakReference<Level> particleBudgetLevel = new WeakReference<>(null);
+    private static long particleBudgetTick = Long.MIN_VALUE;
+    private static int particlesThisTick;
+    private static int particleBudgetThisTick;
+    private static double particleDensityThisTick;
 
     private TurretVisualEffects() {}
 
@@ -38,6 +48,13 @@ public class TurretVisualEffects {
         if (level == null || !level.isClientSide || impactPos == null) return;
 
         BlockPos pos = turret.getBlockPos();
+        if (turret instanceof PrismTowerBlockEntity prism) {
+            prism.visualSupportCount = Math.max(0, Math.round(effectStrength));
+        }
+        if (!TurretClientConfig.optionalEffectsEnabled()) {
+            return;
+        }
+
         if (turret instanceof GatlingTurretBlockEntity) {
             Vec3 muzzle = Vec3.atCenterOf(pos).add(0.0, 1.2, 0.0);
             Vec3 delta = impactPos.subtract(muzzle);
@@ -63,7 +80,6 @@ public class TurretVisualEffects {
 
         if (turret instanceof PrismTowerBlockEntity prism) {
             int supportCount = Math.max(0, Math.round(effectStrength));
-            prism.visualSupportCount = supportCount;
             Vec3 prismTop = Vec3.atCenterOf(pos).add(0.0, 2.625, 0.0);
             spawnPrismBeam(level, prismTop, impactPos, supportCount);
             for (Vec3 point : secondaryPoints) {
@@ -95,10 +111,10 @@ public class TurretVisualEffects {
      * Tesla Coil electric arc particles (Red Alert style)
      */
     public static void spawnElectricArc(Level level, Vec3 start, Vec3 end) {
-        if (!level.isClientSide) return;
+        if (!level.isClientSide || !TurretClientConfig.optionalEffectsEnabled()) return;
 
         RandomSource random = level.random;
-        int steps = 8 + random.nextInt(4);
+        int steps = TurretClientConfig.lowQuality() ? 4 + random.nextInt(3) : 8 + random.nextInt(4);
 
         for (int i = 0; i <= steps; i++) {
             double t = i / (double) steps;
@@ -114,7 +130,7 @@ public class TurretVisualEffects {
 
             // Electric spark particles
             for (int spark = 0; spark < 2; spark++) {
-                level.addParticle(ParticleTypes.ELECTRIC_SPARK,
+                addParticle(level, ParticleTypes.ELECTRIC_SPARK,
                         x + random.nextGaussian() * 0.05,
                         y + random.nextGaussian() * 0.05,
                         z + random.nextGaussian() * 0.05,
@@ -125,7 +141,7 @@ public class TurretVisualEffects {
 
             // Add white sparks for intensity
             if (i % 2 == 0) {
-                level.addParticle(ParticleTypes.END_ROD, x, y, z,
+                addParticle(level, ParticleTypes.END_ROD, x, y, z,
                         random.nextGaussian() * 0.01,
                         random.nextGaussian() * 0.01,
                         random.nextGaussian() * 0.01);
@@ -137,10 +153,13 @@ public class TurretVisualEffects {
      * Prism Tower laser beam (Red Alert style rainbow beam)
      */
     public static void spawnPrismBeam(Level level, Vec3 start, Vec3 end, int supportCount) {
-        if (!level.isClientSide) return;
+        if (!level.isClientSide || !TurretClientConfig.optionalEffectsEnabled()) return;
 
         RandomSource random = level.random;
         int steps = Math.max(12, Math.min(48, (int) (start.distanceTo(end) * 1.25)));
+        if (TurretClientConfig.lowQuality()) {
+            steps = Math.max(6, steps / 2);
+        }
 
         // More supports = more intense beam
         int particleMultiplier = 1 + Math.min(supportCount / 4, 1);
@@ -153,7 +172,7 @@ public class TurretVisualEffects {
 
             // Core white beam
             for (int core = 0; core < particleMultiplier; core++) {
-                level.addParticle(ParticleTypes.END_ROD,
+                addParticle(level, ParticleTypes.END_ROD,
                         x + random.nextGaussian() * 0.02,
                         y + random.nextGaussian() * 0.02,
                         z + random.nextGaussian() * 0.02,
@@ -162,7 +181,7 @@ public class TurretVisualEffects {
 
             // Rainbow shimmer effect
             if (i % 4 == 0) {
-                level.addParticle(ParticleTypes.GLOW,
+                addParticle(level, ParticleTypes.GLOW,
                         x + random.nextGaussian() * 0.05,
                         y + random.nextGaussian() * 0.05,
                         z + random.nextGaussian() * 0.05,
@@ -171,20 +190,20 @@ public class TurretVisualEffects {
         }
 
         // Impact flash at end
-        level.addParticle(ParticleTypes.FLASH, end.x, end.y, end.z, 0.0, 0.0, 0.0);
+        addParticle(level, ParticleTypes.FLASH, end.x, end.y, end.z, 0.0, 0.0, 0.0);
     }
 
     /**
      * Gatling Turret muzzle flash (Red Alert style)
      */
     public static void spawnGatlingMuzzleFlash(Level level, Vec3 position, Vec3 direction) {
-        if (!level.isClientSide) return;
+        if (!level.isClientSide || !TurretClientConfig.optionalEffectsEnabled()) return;
 
         RandomSource random = level.random;
 
         // Keep the gatling flash local to the muzzle. The vanilla FLASH particle
         // blooms into a large disc, which reads as an explosion for rapid fire.
-        level.addParticle(ParticleTypes.FLAME,
+        addParticle(level, ParticleTypes.FLAME,
                 position.x + direction.x * 0.22,
                 position.y + direction.y * 0.10,
                 position.z + direction.z * 0.22,
@@ -196,7 +215,7 @@ public class TurretVisualEffects {
             double offsetY = direction.y * 0.08 + (random.nextDouble() - 0.5) * 0.03;
             double offsetZ = direction.z * 0.18 + (random.nextDouble() - 0.5) * 0.04;
 
-            level.addParticle(ParticleTypes.SMOKE,
+            addParticle(level, ParticleTypes.SMOKE,
                     position.x + offsetX,
                     position.y + offsetY,
                     position.z + offsetZ,
@@ -207,7 +226,7 @@ public class TurretVisualEffects {
 
         // Small spark/casing cue without a glowing splash.
         if (random.nextFloat() < 0.3f) {
-            level.addParticle(ParticleTypes.CRIT,
+            addParticle(level, ParticleTypes.CRIT,
                     position.x - direction.x * 0.2,
                     position.y - 0.1,
                     position.z - direction.z * 0.2,
@@ -221,30 +240,33 @@ public class TurretVisualEffects {
      * Grand Cannon explosion (Red Alert style big boom)
      */
     public static void spawnCannonExplosion(Level level, Vec3 position, float radius) {
-        if (!level.isClientSide) return;
+        if (!level.isClientSide || !TurretClientConfig.optionalEffectsEnabled()) return;
 
         RandomSource random = level.random;
+        ClientImpactEffects.addExplosionShake(level, position, radius);
 
         // Central explosion flash
-        level.addParticle(ParticleTypes.EXPLOSION_EMITTER,
+        addParticle(level, ParticleTypes.EXPLOSION_EMITTER,
                 position.x, position.y, position.z, 0.0, 0.0, 0.0);
 
         // Shockwave ring (multiple explosion particles in circle)
-        for (int angle = 0; angle < 360; angle += 30) {
+        int angleStep = TurretClientConfig.lowQuality() ? 60 : 30;
+        for (int angle = 0; angle < 360; angle += angleStep) {
             double rad = Math.toRadians(angle);
             double x = position.x + Math.cos(rad) * radius * 0.5;
             double z = position.z + Math.sin(rad) * radius * 0.5;
 
-            level.addParticle(ParticleTypes.EXPLOSION, x, position.y, z, 0.0, 0.0, 0.0);
+            addParticle(level, ParticleTypes.EXPLOSION, x, position.y, z, 0.0, 0.0, 0.0);
         }
 
         // Smoke cloud
-        for (int i = 0; i < 20; i++) {
+        int smokeCount = TurretClientConfig.lowQuality() ? 8 : 20;
+        for (int i = 0; i < smokeCount; i++) {
             double offsetX = (random.nextDouble() - 0.5) * radius;
             double offsetY = random.nextDouble() * radius * 0.5;
             double offsetZ = (random.nextDouble() - 0.5) * radius;
 
-            level.addParticle(ParticleTypes.LARGE_SMOKE,
+            addParticle(level, ParticleTypes.LARGE_SMOKE,
                     position.x + offsetX,
                     position.y + offsetY,
                     position.z + offsetZ,
@@ -256,11 +278,12 @@ public class TurretVisualEffects {
      * Cannon recoil smoke (Red Alert style)
      */
     public static void spawnCannonRecoilSmoke(Level level, Vec3 barrelPos, Vec3 backDirection) {
-        if (!level.isClientSide) return;
+        if (!level.isClientSide || !TurretClientConfig.optionalEffectsEnabled()) return;
 
         // Heavy smoke blast from barrel
-        for (int i = 0; i < 5; i++) {
-            level.addParticle(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE,
+        int smokeCount = TurretClientConfig.lowQuality() ? 2 : 5;
+        for (int i = 0; i < smokeCount; i++) {
+            addParticle(level, ParticleTypes.CAMPFIRE_SIGNAL_SMOKE,
                     barrelPos.x + backDirection.x * 0.5 + level.random.nextGaussian() * 0.2,
                     barrelPos.y + level.random.nextGaussian() * 0.1,
                     barrelPos.z + backDirection.z * 0.5 + level.random.nextGaussian() * 0.2,
@@ -268,7 +291,7 @@ public class TurretVisualEffects {
         }
 
         // Flash
-        level.addParticle(ParticleTypes.FLASH,
+        addParticle(level, ParticleTypes.FLASH,
                 barrelPos.x, barrelPos.y, barrelPos.z, 0.0, 0.0, 0.0);
     }
 
@@ -276,22 +299,26 @@ public class TurretVisualEffects {
         double horizontalDistance = Math.hypot(end.x - start.x, end.z - start.z);
         double arcHeight = Math.max(6.0, horizontalDistance * 0.15);
         int steps = Math.max(8, Math.min(30, (int) horizontalDistance / 2));
+        if (TurretClientConfig.lowQuality()) {
+            steps = Math.max(6, steps / 2);
+        }
         for (int i = 0; i <= steps; i++) {
             double t = i / (double) steps;
             double x = start.x + (end.x - start.x) * t;
             double z = start.z + (end.z - start.z) * t;
             double y = start.y + (end.y - start.y) * t + arcHeight * 4.0 * t * (1.0 - t);
-            level.addParticle(ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, x, y, z, 0.0, 0.0, 0.0);
+            addParticle(level, ParticleTypes.CAMPFIRE_SIGNAL_SMOKE, x, y, z, 0.0, 0.0, 0.0);
             if ((i & 1) == 0) {
-                level.addParticle(ParticleTypes.FLAME, x, y, z, 0.0, 0.0, 0.0);
+                addParticle(level, ParticleTypes.FLAME, x, y, z, 0.0, 0.0, 0.0);
             }
         }
     }
 
     private static void spawnOverloadBurst(Level level, Vec3 center, float radius) {
         RandomSource random = level.random;
-        for (int i = 0; i < 32; i++) {
-            level.addParticle(ParticleTypes.ELECTRIC_SPARK,
+        int sparkCount = TurretClientConfig.lowQuality() ? 12 : 32;
+        for (int i = 0; i < sparkCount; i++) {
+            addParticle(level, ParticleTypes.ELECTRIC_SPARK,
                     center.x + random.nextGaussian() * radius * 0.35,
                     center.y + random.nextGaussian() * 0.45,
                     center.z + random.nextGaussian() * radius * 0.35,
@@ -310,18 +337,57 @@ public class TurretVisualEffects {
                 new Vec3(0.0, 0.0, -clusterRadius)
         };
         RandomSource random = level.random;
-        for (Vec3 offset : offsets) {
+        int clusterCount = TurretClientConfig.lowQuality() ? 2 : offsets.length;
+        for (int clusterIndex = 0; clusterIndex < clusterCount; clusterIndex++) {
+            Vec3 offset = offsets[clusterIndex];
             Vec3 center = impactPos.add(offset);
-            level.addParticle(ParticleTypes.EXPLOSION,
+            addParticle(level, ParticleTypes.EXPLOSION,
                     center.x, center.y, center.z, 0.0, 0.0, 0.0);
-            for (int i = 0; i < 12; i++) {
-                level.addParticle(ParticleTypes.SMOKE,
+            int smokeCount = TurretClientConfig.lowQuality() ? 4 : 12;
+            for (int i = 0; i < smokeCount; i++) {
+                addParticle(level, ParticleTypes.SMOKE,
                         center.x + random.nextGaussian() * clusterRadius * 0.25,
                         center.y + 0.25 + random.nextGaussian() * 0.35,
                         center.z + random.nextGaussian() * clusterRadius * 0.25,
                         0.0, 0.02, 0.0);
             }
         }
+    }
+
+    private static void addParticle(Level level, ParticleOptions particle,
+                                    double x, double y, double z,
+                                    double velocityX, double velocityY, double velocityZ) {
+        if (isBrightFlash(particle) && !TurretClientConfig.allowScreenFlashes()) {
+            return;
+        }
+        if (!claimParticle(level)) {
+            return;
+        }
+        level.addParticle(particle, x, y, z, velocityX, velocityY, velocityZ);
+    }
+
+    private static boolean claimParticle(Level level) {
+        long gameTime = level.getGameTime();
+        if (particleBudgetLevel.get() != level || particleBudgetTick != gameTime) {
+            particleBudgetLevel = new WeakReference<>(level);
+            particleBudgetTick = gameTime;
+            particlesThisTick = 0;
+            particleBudgetThisTick = TurretClientConfig.particleBudgetPerTick();
+            particleDensityThisTick = TurretClientConfig.particleDensity();
+        }
+
+        if (particlesThisTick >= particleBudgetThisTick || particleDensityThisTick <= 0.0) {
+            return false;
+        }
+        if (particleDensityThisTick < 1.0 && level.random.nextDouble() >= particleDensityThisTick) {
+            return false;
+        }
+        particlesThisTick++;
+        return true;
+    }
+
+    private static boolean isBrightFlash(ParticleOptions particle) {
+        return particle == ParticleTypes.FLASH || particle == ParticleTypes.EXPLOSION_EMITTER;
     }
 
     /**

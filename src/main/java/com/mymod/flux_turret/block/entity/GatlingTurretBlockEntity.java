@@ -164,6 +164,16 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
     }
 
     @Override
+    protected TargetingMode getAutomaticTargetingMode() {
+        return TargetingMode.FASTEST;
+    }
+
+    @Override
+    protected boolean isWarmingUpForDiagnostics() {
+        return targetId != -1 && spinUp < MIN_SPIN_TO_FIRE;
+    }
+
+    @Override
     public boolean canInstallUpgrade(TurretUpgradeType type) {
         return type == TurretUpgradeType.ARMOR_PIERCING_ROUNDS
                 || type == TurretUpgradeType.FIRE_ROUNDS
@@ -258,7 +268,7 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
 
         if (be.attackCooldown > 0) {
             be.attackCooldown--;
-            if (be.attackCooldown == 0 || level.getGameTime() % 20 == 0) be.setChanged();
+            if (be.attackCooldown == 0 || isPositionScheduledTick(level.getGameTime(), pos, 20)) be.setChanged();
         }
 
         if (hasEnoughEnergy) {
@@ -329,7 +339,8 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
         }
 
         if (be.spinUp != prevSpinUp
-                && (be.spinUp == 0 || be.spinUp == MAX_SPIN || level.getGameTime() % 20 == 0)) {
+                && (be.spinUp == 0 || be.spinUp == MAX_SPIN
+                || isPositionScheduledTick(level.getGameTime(), pos, 20))) {
             be.setChanged();
         }
         if (be.targetId != prevTargetId || be.visualHasEnergy != prevHasEnergy
@@ -401,6 +412,10 @@ public class GatlingTurretBlockEntity extends TurretBlockEntityBase {
         // last-moment jump (the old t*t curve kept it slow for most of the spin).
         float t = Math.max(0, Math.min(MAX_SPIN, spinUp)) / (float) MAX_SPIN;
         return Math.max(MIN_FIRE_INTERVAL, Math.round(MAX_FIRE_INTERVAL + (MIN_FIRE_INTERVAL - MAX_FIRE_INTERVAL) * t));
+    }
+
+    public int getCurrentFireInterval() {
+        return getFireInterval(spinUp);
     }
 
     private DamageSource getGatlingDamageSource(Level level) {

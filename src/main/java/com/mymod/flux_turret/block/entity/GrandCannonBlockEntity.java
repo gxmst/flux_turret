@@ -28,7 +28,6 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
     private int warmupTicks = 0;
     private boolean formed = false;
-    private int structureCheckCounter = 0;
 
     public GrandCannonBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.GRAND_CANNON_BE.get(), pos, state,
@@ -119,6 +118,26 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
     }
 
     @Override
+    protected boolean isPerformanceTrackedTurret() {
+        return isCore();
+    }
+
+    @Override
+    protected TargetingMode getAutomaticTargetingMode() {
+        return TargetingMode.CLUSTER;
+    }
+
+    @Override
+    protected boolean isStructureValidForDiagnostics() {
+        return formed;
+    }
+
+    @Override
+    protected boolean isWarmingUpForDiagnostics() {
+        return warmupTicks > 0;
+    }
+
+    @Override
     public boolean canInstallUpgrade(TurretUpgradeType type) {
         return isCore() && (type == TurretUpgradeType.SEISMIC_SHOCK
                 || type == TurretUpgradeType.ARMOR_BREAK
@@ -169,8 +188,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         be.flushThrottledUpdate();
 
         // Periodically validate structure integrity
-        be.structureCheckCounter++;
-        if (be.structureCheckCounter % STRUCTURE_CHECK_INTERVAL == 0 || !be.formed) {
+        if (!be.formed || isPositionScheduledTick(level.getGameTime(), pos, STRUCTURE_CHECK_INTERVAL)) {
             Direction facing = state.hasProperty(GrandCannonBlock.FACING)
                     ? state.getValue(GrandCannonBlock.FACING) : Direction.NORTH;
             boolean wasFormed = be.formed;
@@ -201,9 +219,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         int prevTargetId = be.targetId;
         boolean prevHasEnergy = be.visualHasEnergy;
 
-        Direction signalFacing = state.hasProperty(GrandCannonBlock.FACING)
-                ? state.getValue(GrandCannonBlock.FACING) : Direction.NORTH;
-        if (be.isStructureRedstoneBlocked(level, pos, signalFacing)) {
+        if (be.isRedstoneBlocked(level, pos)) {
             be.targetId = -1;
             be.isFiring = false;
             be.warmupTicks = 0;
@@ -222,7 +238,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
 
         if (be.attackCooldown > 0) {
             be.attackCooldown--;
-            if (be.attackCooldown == 0 || level.getGameTime() % 20 == 0) be.setChanged();
+            if (be.attackCooldown == 0 || isPositionScheduledTick(level.getGameTime(), pos, 20)) be.setChanged();
         }
 
         // Skip the (expensive, range-64) monster scan entirely when we can't afford
@@ -246,7 +262,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
             be.setAimTarget(target.getX(), target.getEyeY(), target.getZ());
             if (be.attackCooldown <= 0) {
                 be.warmupTicks++;
-                if (level.getGameTime() % 20 == 0) be.setChanged();
+                if (isPositionScheduledTick(level.getGameTime(), pos, 20)) be.setChanged();
                 if (be.warmupTicks >= WARMUP_TICKS) {
                     if (be.getEnergyStorage().consumeEnergy(fireCost)) {
                         Vec3 impactPos = be.fireCannon(level, pos, target);
@@ -275,11 +291,13 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
         be.flushThrottledUpdate();
     }
 
-    private boolean isStructureRedstoneBlocked(Level level, BlockPos corePos, Direction facing) {
+    @Override
+    protected boolean hasRedstoneSignal(Level level, BlockPos corePos) {
+        BlockState coreState = level.getBlockState(corePos);
+        Direction facing = coreState.hasProperty(GrandCannonBlock.FACING)
+                ? coreState.getValue(GrandCannonBlock.FACING) : Direction.NORTH;
         for (GrandCannonBlock.CannonPart part : GrandCannonBlock.CannonPart.values()) {
-            if (level.hasNeighborSignal(part.offset(corePos, facing))) {
-                return true;
-            }
+            if (level.hasNeighborSignal(part.offset(corePos, facing))) return true;
         }
         return false;
     }
@@ -304,7 +322,7 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
                 targetPos.x - damageExtent, targetPos.y - damageExtent, targetPos.z - damageExtent,
                 targetPos.x + damageExtent, targetPos.y + damageExtent, targetPos.z + damageExtent);
 
-        List<Mob> monstersInArea = level.getEntitiesOfClass(Mob.class, damageArea,
+        List<Mob> monstersInArea = trackedEntityQuery(level, Mob.class, damageArea,
                 TurretBlockEntityBase::isEnemyTarget);
 
         float damage = TurretConfig.GRAND_CANNON_DAMAGE.get().floatValue();
@@ -350,6 +368,11 @@ public class GrandCannonBlockEntity extends TurretBlockEntityBase {
     @Override
     protected boolean isValidTarget(Mob monster, Level level, BlockPos selfPos) {
         if (!isTargetUsable(monster, selfPos)) return false;
+        double minRange = Math.min(TurretConfig.GRAND_CANNON_MIN_RANGE.get(),
+                TurretConfig.GRAND_CANNON_RANGE.get());
+        double dx = monster.getX() - (selfPos.getX() + 0.5D);
+        double dz = monster.getZ() - (selfPos.getZ() + 0.5D);
+        if (dx * dx + dz * dz < minRange * minRange) return false;
         // The shell follows an arc, so horizontal line of sight is irrelevant, but
         // it still needs a short clear vertical approach instead of exploding
         // through a roof simply because the block above that roof can see the sky.

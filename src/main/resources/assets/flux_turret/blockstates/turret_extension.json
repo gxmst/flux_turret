@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "offset=1": { "model": "minecraft:block/air" },
+    "offset=2": { "model": "minecraft:block/air" }
+  }
+}

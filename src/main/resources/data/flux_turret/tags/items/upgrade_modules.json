@@ -1,0 +1,17 @@
+{
+  "replace": false,
+  "values": [
+    "flux_turret:armor_piercing_rounds_module",
+    "flux_turret:fire_rounds_module",
+    "flux_turret:slow_rounds_module",
+    "flux_turret:chain_jump_module",
+    "flux_turret:emp_slow_module",
+    "flux_turret:overload_burst_module",
+    "flux_turret:focused_beam_module",
+    "flux_turret:refraction_beam_module",
+    "flux_turret:remote_support_module",
+    "flux_turret:seismic_shock_module",
+    "flux_turret:armor_break_module",
+    "flux_turret:cluster_shells_module"
+  ]
+}

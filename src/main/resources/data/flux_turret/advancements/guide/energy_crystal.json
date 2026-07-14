@@ -1,0 +1,68 @@
+{
+  "parent": "minecraft:story/root",
+  "display": {
+    "icon": {
+      "item": "flux_turret:energy_crystal"
+    },
+    "title": {
+      "translate": "advancement.flux_turret.energy_crystal.title"
+    },
+    "description": {
+      "translate": "advancement.flux_turret.energy_crystal.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "has_materials": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:diamond"
+            ]
+          },
+          {
+            "items": [
+              "minecraft:quartz"
+            ]
+          }
+        ]
+      }
+    },
+    "has_energy_crystal": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "flux_turret:energy_crystal",
+              "flux_turret:empowered_energy_crystal"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_materials",
+      "has_energy_crystal"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "flux_turret:empty_crystal",
+      "flux_turret:energy_crystal_from_crafting",
+      "flux_turret:energy_crystal_from_smelting",
+      "flux_turret:empowered_energy_crystal",
+      "flux_turret:gatling_turret",
+      "flux_turret:tesla_coil",
+      "flux_turret:prism_tower",
+      "flux_turret:grand_cannon"
+    ]
+  }
+}

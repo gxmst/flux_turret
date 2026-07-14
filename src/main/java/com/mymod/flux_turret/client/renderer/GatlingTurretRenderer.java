@@ -1,6 +1,7 @@
 package com.mymod.flux_turret.client.renderer;
 
 import com.mymod.flux_turret.block.entity.GatlingTurretBlockEntity;
+import com.mymod.flux_turret.client.TurretClientConfig;
 import com.mymod.flux_turret.client.model.GatlingTurretModel;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -30,6 +31,11 @@ public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretB
 
         if (be.getLevel() == null)
             return;
+
+        if (!TurretClientConfig.optionalEffectsEnabled()) {
+            be.visualCachedTargetPos = null;
+            return;
+        }
 
         long timeDiff = be.getLevel().getGameTime() - be.getLastFireTime();
         boolean isFiringWindow = timeDiff >= 0 && timeDiff <= 2;
@@ -68,8 +74,12 @@ public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretB
         VertexConsumer buffer = bufferSource.getBuffer(RenderType.lightning());
         Matrix4f matrix = poseStack.last().pose();
 
-        drawMuzzleTracer(matrix, buffer, leftMuzzle, end);
-        drawMuzzleTracer(matrix, buffer, rightMuzzle, end);
+        if (TurretClientConfig.lowQuality()) {
+            drawMuzzleTracer(matrix, buffer, center.add(forward.scale(1.5)), end);
+        } else {
+            drawMuzzleTracer(matrix, buffer, leftMuzzle, end);
+            drawMuzzleTracer(matrix, buffer, rightMuzzle, end);
+        }
     }
 
     private void drawMuzzleTracer(Matrix4f matrix, VertexConsumer buffer, Vec3 muzzle, Vec3 target) {
@@ -80,6 +90,13 @@ public class GatlingTurretRenderer implements BlockEntityRenderer<GatlingTurretB
         double tracerLen = Math.min(direction.length(), 12.0);
         Vec3 tracerEnd = muzzle.add(normal.scale(tracerLen));
         RenderUtils.drawBeam(matrix, buffer, muzzle, tracerEnd, 0.022f, 255, 185, 50, 225);
-        RenderUtils.drawBeam(matrix, buffer, muzzle, muzzle.add(normal.scale(0.42)), 0.06f, 255, 95, 20, 210);
+        if (!TurretClientConfig.lowQuality()) {
+            RenderUtils.drawBeam(matrix, buffer, muzzle, muzzle.add(normal.scale(0.42)), 0.06f, 255, 95, 20, 210);
+        }
+    }
+
+    @Override
+    public int getViewDistance() {
+        return 64;
     }
 }

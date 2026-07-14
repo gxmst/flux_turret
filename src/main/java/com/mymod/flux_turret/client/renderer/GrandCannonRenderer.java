@@ -63,6 +63,6 @@ public class GrandCannonRenderer implements BlockEntityRenderer<GrandCannonBlock
 
     @Override
     public int getViewDistance() {
-        return 256;
+        return 64;
     }
 }

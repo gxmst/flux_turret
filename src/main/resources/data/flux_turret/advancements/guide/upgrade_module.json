@@ -1,0 +1,41 @@
+{
+  "parent": "flux_turret:guide/psychic_beacon",
+  "display": {
+    "icon": {
+      "item": "flux_turret:fire_rounds_module"
+    },
+    "title": {
+      "translate": "advancement.flux_turret.upgrade_module.title"
+    },
+    "description": {
+      "translate": "advancement.flux_turret.upgrade_module.description"
+    },
+    "frame": "challenge",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "has_upgrade_module": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "tag": "flux_turret:upgrade_modules"
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_upgrade_module"
+    ]
+  ],
+  "rewards": {
+    "experience": 50,
+    "recipes": [
+      "flux_turret:recycle_upgrade_module"
+    ]
+  }
+}

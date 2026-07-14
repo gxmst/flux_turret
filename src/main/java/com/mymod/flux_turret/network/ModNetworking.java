@@ -9,7 +9,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 import java.util.Optional;
 
 public class ModNetworking {
-    private static final String PROTOCOL_VERSION = "3";
+    private static final String PROTOCOL_VERSION = "4";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID, "main"),
             () -> PROTOCOL_VERSION,
@@ -37,6 +37,11 @@ public class ModNetworking {
                 CycleBeaconDoctrinePacket::encode,
                 CycleBeaconDoctrinePacket::decode,
                 CycleBeaconDoctrinePacket::handle,
+                Optional.of(NetworkDirection.PLAY_TO_SERVER));
+        CHANNEL.registerMessage(4, ConfigureTurretPacket.class,
+                ConfigureTurretPacket::encode,
+                ConfigureTurretPacket::decode,
+                ConfigureTurretPacket::handle,
                 Optional.of(NetworkDirection.PLAY_TO_SERVER));
     }
 }

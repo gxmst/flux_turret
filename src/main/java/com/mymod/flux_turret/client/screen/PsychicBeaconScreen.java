@@ -2,13 +2,16 @@ package com.mymod.flux_turret.client.screen;
 
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.block.entity.PsychicBeaconBlockEntity;
+import com.mymod.flux_turret.client.renderer.BlockMarkerOverlay;
 import com.mymod.flux_turret.client.renderer.PsychicBeaconRenderer;
 import com.mymod.flux_turret.menu.PsychicBeaconMenu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.minecraft.Util;
 import net.minecraft.world.entity.player.Inventory;
 
 public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMenu> {
@@ -28,7 +31,9 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
     private Button toggleButton;
     private Button doctrineButton;
     private Button linkButton;
+    private Button missingBlockButton;
     private final Button[] buffButtons = new Button[PsychicBeaconBlockEntity.BUFF_COUNT];
+    private long stopConfirmDeadlineMillis = 0L;
 
     public PsychicBeaconScreen(PsychicBeaconMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -44,7 +49,7 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         int y = (this.height - this.imageHeight) / 2;
         toggleButton = addRenderableWidget(Button.builder(
                 Component.literal(""),
-                b -> menu.toggleEnabled())
+                b -> onTogglePressed())
                 .bounds(x + this.imageWidth - 64, y + 8, 52, 18)
                 .build());
         doctrineButton = addRenderableWidget(Button.builder(
@@ -57,6 +62,15 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
                 b -> PsychicBeaconRenderer.toggleNetworkLinks())
                 .bounds(x + this.imageWidth - 184, y + 8, 54, 18)
                 .build());
+        missingBlockButton = addRenderableWidget(Button.builder(
+                Component.literal("!"), b -> {
+                    if (minecraft != null && minecraft.level != null
+                            && menu.getMissingStructureBlocks() > 0) {
+                        BlockMarkerOverlay.show(minecraft.level, new net.minecraft.core.BlockPos(
+                                menu.getFirstMissingX(), menu.getFirstMissingY(), menu.getFirstMissingZ()));
+                        onClose();
+                    }
+                }).bounds(x + 218, y + 91, 14, 12).build());
         for (int i = 0; i < buffButtons.length; i++) {
             final int buffIndex = i;
             int col = i % 2;
@@ -89,9 +103,14 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         if (toggleButton != null) {
             boolean enabled = menu.getEnabled() == 1;
-            toggleButton.setMessage(Component.translatable(enabled
-                    ? "screen.flux_turret.psychic_beacon.stop"
-                    : "screen.flux_turret.psychic_beacon.start"));
+            boolean awaitingConfirmation = enabled && menu.isBattleInProgress()
+                    && Util.getMillis() <= stopConfirmDeadlineMillis;
+            toggleButton.setMessage(Component.translatable(awaitingConfirmation
+                    ? "screen.flux_turret.psychic_beacon.confirm_stop"
+                    : enabled
+                        ? "screen.flux_turret.psychic_beacon.stop"
+                        : "screen.flux_turret.psychic_beacon.start"));
+            if (!enabled || !menu.isBattleInProgress()) stopConfirmDeadlineMillis = 0L;
         }
         if (doctrineButton != null) {
             doctrineButton.active = !menu.isBattleInProgress();
@@ -101,6 +120,17 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
             linkButton.setMessage(Component.translatable(PsychicBeaconRenderer.shouldRenderNetworkLinks()
                     ? "screen.flux_turret.psychic_beacon.links_on"
                     : "screen.flux_turret.psychic_beacon.links_off"));
+        }
+        if (missingBlockButton != null) {
+            boolean missing = menu.getThreatLevel() <= 0 && menu.getMissingStructureBlocks() > 0;
+            missingBlockButton.visible = missing;
+            missingBlockButton.active = missing;
+            if (missing) {
+                missingBlockButton.setTooltip(Tooltip.create(Component.translatable(
+                        "screen.flux_turret.psychic_beacon.reason.structure_missing",
+                        menu.getMissingStructureBlocks(), menu.getFirstMissingX(), menu.getFirstMissingY(),
+                        menu.getFirstMissingZ())));
+            }
         }
         updateBuffButtons();
 
@@ -124,11 +154,11 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         int stabilityMax = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
         int threatLevel = menu.getThreatLevel();
         int kills = menu.getTodayKills();
-        int minKills = PsychicBeaconBlockEntity.getRequiredKillsForThreatLevel(threatLevel);
-        int dawnCost = PsychicBeaconBlockEntity.getEffectiveDawnCost(
-                TurretConfig.PSYCHIC_BEACON_DAWN_COST.get(), maxEnergy);
+        int minKills = menu.getRequiredKills();
+        int requiredEnergy = menu.getRequiredEnergyThroughReward();
 
         drawBeaconDiagram(guiGraphics, x + 20, y + 47, stateColor, threatLevel, partialTick);
+        drawText(guiGraphics, getStateText(state), x + 16, y + 38, 78, stateColor);
         drawText(guiGraphics, tr("screen.flux_turret.psychic_beacon.buffs"), x + 16, y + 125, 78, TEXT_DIM);
         drawText(guiGraphics, Component.translatable("screen.flux_turret.psychic_beacon.level_select",
                         threatLevel, PsychicBeaconBlockEntity.getMaxSelectedBuffs(threatLevel)).getString(),
@@ -139,6 +169,7 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         drawText(guiGraphics, formatFe(energy) + " / " + formatFe(maxEnergy) + " FE", x + 122, y + 73, 110, getEnergyColor(energy, maxEnergy));
         drawText(guiGraphics, Component.translatable("screen.flux_turret.psychic_beacon.drain", formatFe(drainRate)).getString(),
                 x + 122, y + 84, 110, TEXT_DIM);
+        drawText(guiGraphics, getStatusReason(energy), x + 122, y + 93, 110, getStatusReasonColor(energy));
 
         drawProgressMetric(guiGraphics, x + 122, y + 102, 110, tr("screen.flux_turret.psychic_beacon.stability"),
                 stability + " / " + stabilityMax, stability, stabilityMax, getStabilityColor(stability, stabilityMax));
@@ -147,9 +178,79 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         drawMetric(guiGraphics, x + 122, y + 162, 52, 28,
                 tr("screen.flux_turret.psychic_beacon.dawn"), formatTicks(menu.getTimeUntilDawn()), CYAN, TEXT);
         drawMetric(guiGraphics, x + 180, y + 162, 52, 28,
-                tr("screen.flux_turret.psychic_beacon.cost"), formatFe(dawnCost), energy >= dawnCost ? GREEN : AMBER, energy >= dawnCost ? GREEN : AMBER);
+                tr("screen.flux_turret.psychic_beacon.required"), formatFe(requiredEnergy),
+                energy >= requiredEnergy ? GREEN : AMBER, energy >= requiredEnergy ? GREEN : AMBER);
 
-        drawNetworkPanel(guiGraphics, x + 10, y + 200, this.imageWidth - 20, 14);
+        drawNetworkPanel(guiGraphics, x + 10, y + 200, this.imageWidth - 20, 14, mouseX, mouseY);
+        if (mouseX >= x + 120 && mouseX < x + 234 && mouseY >= y + 90 && mouseY < y + 102) {
+            guiGraphics.renderTooltip(this.font, Component.literal(getStatusReason(energy)), mouseX, mouseY);
+        }
+    }
+
+    private void onTogglePressed() {
+        boolean stoppingBattle = menu.getEnabled() == 1 && menu.isBattleInProgress();
+        long now = Util.getMillis();
+        if (stoppingBattle && now > stopConfirmDeadlineMillis) {
+            stopConfirmDeadlineMillis = now + 3000L;
+            return;
+        }
+        stopConfirmDeadlineMillis = 0L;
+        menu.toggleEnabled();
+    }
+
+    private String getStatusReason(int energy) {
+        int rewardStatus = menu.getPendingRewardStatus();
+        if (menu.getBeaconState() == PsychicBeaconBlockEntity.STATE_FAILED) {
+            return Component.translatable("screen.flux_turret.psychic_beacon.reason.failed",
+                    TurretConfig.PSYCHIC_BEACON_REPAIR_SHARDS.get()).getString();
+        }
+        if (menu.getEnabled() == 0) {
+            return tr("screen.flux_turret.psychic_beacon.reason.disabled");
+        }
+        if (rewardStatus == PsychicBeaconBlockEntity.REWARD_STATUS_WAITING_ENERGY) {
+            return tr("screen.flux_turret.psychic_beacon.reason.reward_energy");
+        }
+        if (rewardStatus == PsychicBeaconBlockEntity.REWARD_STATUS_WAITING_SPACE) {
+            return tr("screen.flux_turret.psychic_beacon.reason.reward_space");
+        }
+        if (rewardStatus == PsychicBeaconBlockEntity.REWARD_STATUS_DELIVERING) {
+            return tr("screen.flux_turret.psychic_beacon.reason.reward_delivering");
+        }
+        if (menu.isBlockedByRedstone()) {
+            return menu.getBeaconState() == PsychicBeaconBlockEntity.STATE_WARNING
+                    ? tr("screen.flux_turret.psychic_beacon.reason.redstone_warning")
+                    : tr("screen.flux_turret.psychic_beacon.reason.redstone");
+        }
+        if (energy <= 0) {
+            return tr("screen.flux_turret.psychic_beacon.reason.no_energy");
+        }
+        if (menu.getThreatLevel() <= 0 && menu.getMissingStructureBlocks() > 0) {
+            return Component.translatable("screen.flux_turret.psychic_beacon.reason.structure_missing",
+                    menu.getMissingStructureBlocks(), menu.getFirstMissingX(), menu.getFirstMissingY(),
+                    menu.getFirstMissingZ()).getString();
+        }
+        if (menu.isBattleInProgress()) {
+            return Component.translatable("screen.flux_turret.psychic_beacon.reason.defending",
+                    Component.translatable(PsychicBeaconBlockEntity.getAffixTranslationKey(menu.getActiveAffix())))
+                    .getString();
+        }
+        int deficit = menu.getRequiredEnergyThroughReward() - energy;
+        if (deficit > 0) {
+            return Component.translatable("screen.flux_turret.psychic_beacon.reason.insufficient_reserve",
+                    formatFe(deficit)).getString();
+        }
+        return tr("screen.flux_turret.psychic_beacon.reason.ready");
+    }
+
+    private int getStatusReasonColor(int energy) {
+        int rewardStatus = menu.getPendingRewardStatus();
+        if (menu.getBeaconState() == PsychicBeaconBlockEntity.STATE_FAILED || energy <= 0) return RED;
+        if (rewardStatus == PsychicBeaconBlockEntity.REWARD_STATUS_WAITING_ENERGY
+                || rewardStatus == PsychicBeaconBlockEntity.REWARD_STATUS_WAITING_SPACE
+                || menu.isBlockedByRedstone()
+                || (menu.getThreatLevel() <= 0 && menu.getMissingStructureBlocks() > 0)
+                || (!menu.isBattleInProgress() && menu.getRequiredEnergyThroughReward() > energy)) return AMBER;
+        return rewardStatus == PsychicBeaconBlockEntity.REWARD_STATUS_DELIVERING ? CYAN : GREEN;
     }
 
     private void updateBuffButtons() {
@@ -165,7 +266,19 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
             boolean unlocked = PsychicBeaconBlockEntity.isBuffUnlocked(i, threatLevel);
             boolean selected = (selectedMask & (1 << i)) != 0;
             button.active = !settingsLocked && unlocked && (selected || !selectionFull);
-            button.setMessage(Component.literal((selected ? ">" : "") + getBuffName(i)));
+            button.setMessage(Component.literal((selected ? "[x] " : unlocked ? "[ ] " : "[-] ")
+                    + getBuffName(i)));
+            String stateKey = settingsLocked
+                    ? "screen.flux_turret.psychic_beacon.buff_locked_battle"
+                    : !unlocked
+                    ? "screen.flux_turret.psychic_beacon.buff_locked_level"
+                    : selected
+                    ? "screen.flux_turret.psychic_beacon.buff_selected"
+                    : selectionFull
+                    ? "screen.flux_turret.psychic_beacon.buff_selection_full"
+                    : "screen.flux_turret.psychic_beacon.buff_available";
+            button.setTooltip(Tooltip.create(Component.translatable(stateKey,
+                    Component.literal(getBuffName(i)))));
         }
     }
 
@@ -244,13 +357,24 @@ public class PsychicBeaconScreen extends AbstractContainerScreen<PsychicBeaconMe
         }).getString();
     }
 
-    private void drawNetworkPanel(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+    private void drawNetworkPanel(GuiGraphics guiGraphics, int x, int y, int width, int height,
+                                  int mouseX, int mouseY) {
         guiGraphics.fill(x, y, x + width, y + height, 0x00141822);
+        int score = menu.isBattleInProgress()
+                ? PsychicBeaconBlockEntity.calculateBattleScore(menu.getThreatLevel(), menu.getTodayKills(),
+                menu.getStability(), menu.getActiveAffix(), menu.getDoctrine())
+                : menu.getLastBattleScore();
         String text = Component.translatable("screen.flux_turret.psychic_beacon.network",
                 menu.getNearbyPrismCount(), menu.getNearbyTeslaCount(), menu.getNearbyGatlingCount(),
+                menu.getNearbyCannonCount(),
                 Component.translatable(PsychicBeaconBlockEntity.getAffixTranslationKey(menu.getActiveAffix())).getString(),
-                menu.getLastBattleScore()).getString();
+                score).getString();
         drawText(guiGraphics, text, x + 7, y + 3, width - 14, TEXT);
+        if (mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height) {
+            int next = score < 260 ? 260 : score < 520 ? 520 : 650;
+            guiGraphics.renderTooltip(font, Component.translatable(
+                    "screen.flux_turret.psychic_beacon.reward_preview", score, next), mouseX, mouseY);
+        }
     }
 
     private String tr(String key) {

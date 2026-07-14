@@ -2,15 +2,23 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
+import com.mymod.flux_turret.FluxTurretMod;
 import com.mymod.flux_turret.block.PsychicBeaconBlock;
+import com.mymod.flux_turret.item.EnergyCrystalItem;
+import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.menu.PsychicBeaconMenu;
+import com.mymod.flux_turret.util.ChargeHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.BossEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
@@ -34,6 +42,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -75,6 +84,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static final int DEFENSE_START_TIME = 12000;
     private static final int DAWN_TIME = 23000;
     private static final String REWARD_CHEST_ID_TAG = "FluxTurretRewardId";
+    private static final String REWARD_CHEST_OWNER_TAG = "FluxTurretRewardOwner";
+    private static final String REWARD_CHEST_OWNER_NAME_TAG = "FluxTurretRewardOwnerName";
+    private static final String REWARD_CHEST_PROTECTED_UNTIL_TAG = "FluxTurretRewardProtectedUntil";
 
     public static final int STATE_OFFLINE = 0;
     public static final int STATE_IDLE = 1;
@@ -97,6 +109,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     public static final int AFFIX_RUSH = 3;
     public static final int AFFIX_OVERLOAD = 4;
     public static final int AFFIX_COUNT = 5;
+    public static final int REWARD_STATUS_NONE = 0;
+    public static final int REWARD_STATUS_WAITING_ENERGY = 1;
+    public static final int REWARD_STATUS_WAITING_SPACE = 2;
+    public static final int REWARD_STATUS_DELIVERING = 3;
 
     private int beaconState = STATE_OFFLINE;
     private int stability = 100;
@@ -117,6 +133,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private int doctrine = DOCTRINE_GUARD;
     private int activeWaveAffix = AFFIX_NONE;
     private int lastBattleScore = 0;
+    private int missingStructureBlocks = 0;
+    private int firstMissingStructureDx = 0;
+    private int firstMissingStructureDy = 0;
+    private int firstMissingStructureDz = 0;
 
     // A night is a persisted, server-authoritative session. Snapshotting these
     // values prevents changing the pyramid or doctrine after an easy fight and
@@ -142,12 +162,13 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private int pendingScore = 0;
     private boolean pendingEnergyNoticeSent = false;
     private boolean pendingSpaceNoticeSent = false;
+    private boolean pendingSpaceBlocked = false;
     @Nullable
     private UUID pendingRewardId;
     private boolean pendingEnergyReserved = false;
     private int pendingDeliveryRetryCooldown = 0;
 
-    private int[] cachedTurretCounts = new int[3];
+    private int[] cachedTurretCounts = new int[4];
     private java.util.List<BlockPos> cachedNetworkNodes = java.util.List.of();
     private int turretScanCooldown = 0;
     private long lastTurretScanGameTime = Long.MIN_VALUE;
@@ -164,6 +185,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private static final int PLAYER_SCAN_INTERVAL = 20;
     private static final int TURRET_SCAN_INTERVAL = 200;
     private static final int MIN_TURRET_SCAN_INTERVAL = 20;
+
+    private int lastComparatorSignal = -1;
+    private int lastComparatorState = -1;
+    private long lastBossBarUpdateTick = Long.MIN_VALUE;
+    private final ServerBossEvent battleBossEvent = new ServerBossEvent(
+            Component.translatable("hud.flux_turret.psychic_beacon.battle"),
+            BossEvent.BossBarColor.PURPLE,
+            BossEvent.BossBarOverlay.PROGRESS);
 
     /**
      * Server-side registry of currently-active beacons, maintained each tick.
@@ -183,6 +212,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             // Prune stale entries opportunistically (unloaded / removed / wrong level).
             if (beacon.isRemoved() || beacon.level == null || !beacon.battleInProgress
                     || (beacon.beaconState != STATE_ACTIVE && beacon.beaconState != STATE_WARNING)) {
+                beacon.battleBossEvent.removeAllPlayers();
                 it.remove();
                 continue;
             }
@@ -206,6 +236,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         while (it.hasNext()) {
             PsychicBeaconBlockEntity beacon = it.next();
             if (beacon.level == level || beacon.level == null || beacon.isRemoved()) {
+                beacon.battleBossEvent.removeAllPlayers();
                 it.remove();
             }
         }
@@ -213,6 +244,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
     /** Drop all tracked beacons. Hooked to server stop so the static set never outlives a world. */
     public static void clearActiveBeacons() {
+        for (PsychicBeaconBlockEntity beacon : ACTIVE_BEACONS) {
+            beacon.battleBossEvent.removeAllPlayers();
+        }
         ACTIVE_BEACONS.clear();
     }
 
@@ -222,6 +256,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             PsychicBeaconBlockEntity beacon = it.next();
             if (beacon.isRemoved() || beacon.level == null || !beacon.battleInProgress
                     || (beacon.beaconState != STATE_ACTIVE && beacon.beaconState != STATE_WARNING)) {
+                beacon.battleBossEvent.removeAllPlayers();
                 it.remove();
                 continue;
             }
@@ -234,6 +269,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
     @Override
     public void setRemoved() {
+        if (level != null && !level.isClientSide) {
+            cleanupBeaconSpawnedMonsters(level, worldPosition);
+        }
+        battleBossEvent.removeAllPlayers();
         super.setRemoved();
         ACTIVE_BEACONS.remove(this);
     }
@@ -242,6 +281,16 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     public void setChanged() {
         super.setChanged();
         if (level == null || level.isClientSide) return;
+        int comparatorSignal = ChargeHelper.energySignal(
+                energyStorage.getEnergyStored(), energyStorage.getMaxEnergyStored());
+        if (comparatorSignal == lastComparatorSignal && beaconState == lastComparatorState) return;
+        lastComparatorSignal = comparatorSignal;
+        lastComparatorState = beaconState;
+
+        BlockState lowerState = level.getBlockState(worldPosition);
+        if (lowerState.is(ModRegistry.PSYCHIC_BEACON_BLOCK.get())) {
+            level.updateNeighbourForOutputSignal(worldPosition, lowerState.getBlock());
+        }
         BlockPos upperPos = worldPosition.above();
         BlockState upperState = level.getBlockState(upperPos);
         if (upperState.is(ModRegistry.PSYCHIC_BEACON_BLOCK.get())) {
@@ -311,6 +360,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return todayKills;
     }
 
+    public String getOwnerName() {
+        return ownerName;
+    }
+
     public static int getRequiredKillsForThreatLevel(int threatLevel) {
         int base = TurretConfig.PSYCHIC_BEACON_MIN_KILLS.get();
         return switch (Math.max(0, Math.min(4, threatLevel))) {
@@ -335,6 +388,85 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
     public int getLastBattleScore() {
         return lastBattleScore;
+    }
+
+    public int getMissingStructureBlocks() {
+        return missingStructureBlocks;
+    }
+
+    public int getFirstMissingStructureDx() {
+        return firstMissingStructureDx;
+    }
+
+    public int getFirstMissingStructureDy() {
+        return firstMissingStructureDy;
+    }
+
+    public int getFirstMissingStructureDz() {
+        return firstMissingStructureDz;
+    }
+
+    public boolean isPendingReward() {
+        return pendingReward;
+    }
+
+    public boolean isPendingEnergyReserved() {
+        return pendingEnergyReserved;
+    }
+
+    public int getPendingRewardStatus() {
+        if (!pendingReward) return REWARD_STATUS_NONE;
+        if (!pendingEnergyReserved && energyStorage.getEnergyStored() < getEffectiveDawnCost()) {
+            return REWARD_STATUS_WAITING_ENERGY;
+        }
+        if (pendingSpaceBlocked) {
+            return REWARD_STATUS_WAITING_SPACE;
+        }
+        return REWARD_STATUS_DELIVERING;
+    }
+
+    public int getRequiredKillsForCurrentBattle() {
+        return getRequiredKillsForThreatLevel(battleInProgress ? battleThreatLevel : threatLevel);
+    }
+
+    public int getRequiredEnergyThroughReward() {
+        int dawnCost = pendingEnergyReserved ? 0 : getEffectiveDawnCost();
+        if (pendingReward) return dawnCost;
+        if (level == null) return dawnCost;
+        return calculateRequiredEnergyThroughReward(
+                getTimeUntilDawn(), TurretConfig.PSYCHIC_BEACON_DRAIN_RATE.get(), dawnCost, false);
+    }
+
+    static int calculateRequiredEnergyThroughReward(
+            long remainingTicks, int drainRate, int dawnCost, boolean rewardEnergyReserved) {
+        long safeDawnCost = rewardEnergyReserved ? 0L : Math.max(0, dawnCost);
+        long safeTicks = Math.max(0L, remainingTicks);
+        long safeDrain = Math.max(0, drainRate);
+        if (safeDawnCost >= Integer.MAX_VALUE) return Integer.MAX_VALUE;
+        long remainingBudget = Integer.MAX_VALUE - safeDawnCost;
+        if (safeDrain > 0 && safeTicks > remainingBudget / safeDrain) return Integer.MAX_VALUE;
+        return (int) (safeTicks * safeDrain + safeDawnCost);
+    }
+
+    public boolean isBlockedByRedstone() {
+        return level != null && level.hasNeighborSignal(worldPosition);
+    }
+
+    public boolean repairFailedBeacon() {
+        if (beaconState != STATE_FAILED || level == null || level.isClientSide) return false;
+        stability = TurretConfig.PSYCHIC_BEACON_STABILITY.get();
+        stabilityNoticeStage = 0;
+        warningTimer = 0;
+        scanCooldown = 0;
+        beaconState = enabled && energyStorage.getEnergyStored() > 0 && !level.hasNeighborSignal(worldPosition)
+                ? STATE_IDLE : STATE_OFFLINE;
+        BlockState state = getBlockState();
+        updateLitState(level, worldPosition, state);
+        setChanged();
+        level.sendBlockUpdated(worldPosition, state, getBlockState(), 3);
+        level.playSound(null, worldPosition, SoundEvents.AMETHYST_BLOCK_CHIME,
+                SoundSource.BLOCKS, 1.0F, 1.2F);
+        return true;
     }
 
     public EnergyStorage getEnergyStorage() {
@@ -375,6 +507,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         ownerUuid = player.getUUID();
         ownerName = player.getScoreboardName();
         setChanged();
+    }
+
+    public void claimIfUnowned(Player player) {
+        if (ownerUuid == null) setOwner(player);
     }
 
     public boolean canPlayerConfigure(Player player) {
@@ -500,6 +636,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         int prism = 0;
         int tesla = 0;
         int gatling = 0;
+        int cannon = 0;
         boolean collectNetworkNodes = beaconState == STATE_ACTIVE || beaconState == STATE_WARNING;
         java.util.ArrayList<BlockPos> nodes = new java.util.ArrayList<>();
         int cx = worldPosition.getX() >> 4;
@@ -522,6 +659,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                     } else if (blockEntity instanceof GatlingTurretBlockEntity) {
                         gatling++;
                         if (collectNetworkNodes) addNetworkNode(nodes, blockEntity.getBlockPos());
+                    } else if (blockEntity instanceof GrandCannonBlockEntity
+                            && blockEntity.getBlockState().hasProperty(
+                            com.mymod.flux_turret.block.GrandCannonBlock.PART)
+                            && blockEntity.getBlockState().getValue(
+                            com.mymod.flux_turret.block.GrandCannonBlock.PART)
+                            == com.mymod.flux_turret.block.GrandCannonBlock.CannonPart.BACK_LEFT) {
+                        cannon++;
+                        if (collectNetworkNodes) addNetworkNode(nodes, blockEntity.getBlockPos());
                     }
                 }
             }
@@ -531,10 +676,12 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         boolean changed = cachedTurretCounts[0] != prism
                 || cachedTurretCounts[1] != tesla
                 || cachedTurretCounts[2] != gatling
+                || cachedTurretCounts[3] != cannon
                 || !cachedNetworkNodes.equals(refreshedNodes);
         cachedTurretCounts[0] = prism;
         cachedTurretCounts[1] = tesla;
         cachedTurretCounts[2] = gatling;
+        cachedTurretCounts[3] = cannon;
         cachedNetworkNodes = refreshedNodes;
         if (changed) {
             setChanged();
@@ -561,7 +708,8 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     public long getTimeUntilDawn() {
         if (level == null) return 0;
         long dayTime = level.getDayTime() % 24000;
-        return dayTime < DAWN_TIME ? DAWN_TIME - dayTime : 0;
+        if (dayTime < DAWN_TIME) return DAWN_TIME - dayTime;
+        return battleInProgress ? 0 : (24000 - dayTime) + DAWN_TIME;
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, PsychicBeaconBlockEntity be) {
@@ -572,7 +720,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
         int prevState = be.beaconState;
 
-        if (!be.enabled && be.beaconState != STATE_OFFLINE) {
+        if (!be.enabled && be.beaconState != STATE_OFFLINE && be.beaconState != STATE_FAILED) {
             if (be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING) {
                 abortBattle(level, pos, be, false);
             }
@@ -629,14 +777,15 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
                 break;
         }
 
-        // Stability failure removes the block entity from inside tickActive.
-        // Never run state synchronization against the stale pre-explosion state.
+        // A replacement/removal from another hook must not leave a stale active
+        // beacon reference or attempt synchronization against a detached instance.
         if (be.isRemoved() || level.getBlockEntity(pos) != be) {
             ACTIVE_BEACONS.remove(be);
             return;
         }
 
         be.tryDeliverPendingReward();
+        be.updateBattleBossBar(level);
 
         if (be.battleInProgress
                 && (be.beaconState == STATE_ACTIVE || be.beaconState == STATE_WARNING)) {
@@ -947,6 +1096,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             be.pendingScore = score;
             be.pendingEnergyNoticeSent = false;
             be.pendingSpaceNoticeSent = false;
+            be.pendingSpaceBlocked = false;
             be.pendingRewardId = UUID.randomUUID();
             be.pendingEnergyReserved = false;
             be.pendingDeliveryRetryCooldown = 0;
@@ -1016,6 +1166,15 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             pendingRewardId = UUID.randomUUID();
             setChanged();
         }
+        // Every potentially-expensive delivery operation, including recovery of an
+        // already-created chest, is behind the same retry gate. This avoids a
+        // 100-position block-entity scan on every server tick while delivery waits.
+        if (pendingDeliveryRetryCooldown > 0) {
+            pendingDeliveryRetryCooldown--;
+            return;
+        }
+        pendingDeliveryRetryCooldown = TurretConfig.PSYCHIC_BEACON_REWARD_RETRY_INTERVAL.get();
+
         if (findDeliveredRewardChest(level, worldPosition, pendingRewardId) != null) {
             clearPendingReward();
             setChanged();
@@ -1044,14 +1203,12 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             setChanged();
         }
 
-        if (pendingDeliveryRetryCooldown > 0) {
-            pendingDeliveryRetryCooldown--;
-            return;
-        }
-
         BlockPos chestPos = findChestPos(level, worldPosition);
         if (chestPos == null) {
-            pendingDeliveryRetryCooldown = PLAYER_SCAN_INTERVAL;
+            if (!pendingSpaceBlocked) {
+                pendingSpaceBlocked = true;
+                setChanged();
+            }
             if (!pendingSpaceNoticeSent) {
                 boolean notified = displayMessageToNearbyPlayers(
                         Component.translatable("message.flux_turret.beacon_no_chest_space")
@@ -1063,26 +1220,46 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             }
             return;
         }
-
-        if (!level.setBlock(chestPos, Blocks.CHEST.defaultBlockState(), 3)) {
-            pendingDeliveryRetryCooldown = PLAYER_SCAN_INTERVAL;
-            return;
-        }
-        BlockEntity chestBe = level.getBlockEntity(chestPos);
-        if (!(chestBe instanceof ChestBlockEntity chest)) {
-            level.removeBlock(chestPos, false);
-            pendingDeliveryRetryCooldown = PLAYER_SCAN_INTERVAL;
-            return;
+        if (pendingSpaceBlocked) {
+            pendingSpaceBlocked = false;
+            setChanged();
         }
 
+        BlockState chestState = Blocks.CHEST.defaultBlockState();
+        if (!level.setBlock(chestPos, chestState, 3)) {
+            return;
+        }
+        ProtectedRewardChestBlockEntity chest =
+                new ProtectedRewardChestBlockEntity(chestPos, chestState);
         chest.getPersistentData().putUUID(REWARD_CHEST_ID_TAG, pendingRewardId);
+        if (ownerUuid != null) {
+            chest.getPersistentData().putUUID(REWARD_CHEST_OWNER_TAG, ownerUuid);
+            if (!ownerName.isEmpty()) {
+                chest.getPersistentData().putString(REWARD_CHEST_OWNER_NAME_TAG, ownerName);
+            }
+            int protectionTicks = TurretConfig.PSYCHIC_BEACON_REWARD_PROTECTION_TICKS.get();
+            if (protectionTicks > 0) {
+                chest.getPersistentData().putLong(
+                        REWARD_CHEST_PROTECTED_UNTIL_TAG,
+                        level.getGameTime() + protectionTicks);
+            }
+        }
         fillVictoryChestDynamic(level, worldPosition, chest, pendingThreatLevel, pendingKills,
                 pendingScore, pendingDoctrine);
+        // Attach only after the protection identity and rewards are complete. No
+        // onLoad listener or automation network can observe an unguarded window.
+        level.setBlockEntity(chest);
         chest.setChanged();
 
         level.playSound(null, worldPosition, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.BLOCKS, 1.0f, 1.0f);
+        if (level instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(ParticleTypes.END_ROD,
+                    chestPos.getX() + 0.5, chestPos.getY() + 1.0, chestPos.getZ() + 0.5,
+                    24, 0.2, 1.2, 0.2, 0.015);
+        }
         displayMessageToNearbyPlayers(
-                Component.translatable("message.flux_turret.beacon_defense_success", pendingScore)
+                Component.translatable("message.flux_turret.beacon_defense_success_location",
+                                pendingScore, chestPos.getX(), chestPos.getY(), chestPos.getZ())
                         .withStyle(net.minecraft.ChatFormatting.AQUA));
 
         clearPendingReward();
@@ -1100,6 +1277,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         pendingScore = 0;
         pendingEnergyNoticeSent = false;
         pendingSpaceNoticeSent = false;
+        pendingSpaceBlocked = false;
         pendingRewardId = null;
         pendingEnergyReserved = false;
         pendingDeliveryRetryCooldown = 0;
@@ -1116,6 +1294,58 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     private void refreshNearbyPlayers(Level level) {
         AABB area = new AABB(worldPosition).inflate(NOTIFY_RADIUS);
         cachedNearbyPlayers = level.getEntitiesOfClass(Player.class, area);
+    }
+
+    private void updateBattleBossBar(Level level) {
+        boolean visible = TurretConfig.PSYCHIC_BEACON_BOSS_BAR.get()
+                && battleInProgress
+                && (beaconState == STATE_ACTIVE || beaconState == STATE_WARNING);
+        if (!visible) {
+            battleBossEvent.setVisible(false);
+            battleBossEvent.removeAllPlayers();
+            lastBossBarUpdateTick = Long.MIN_VALUE;
+            return;
+        }
+
+        if (lastBossBarUpdateTick != Long.MIN_VALUE
+                && level.getGameTime() - lastBossBarUpdateTick < 20) return;
+        lastBossBarUpdateTick = level.getGameTime();
+
+        battleBossEvent.setVisible(true);
+        java.util.Set<ServerPlayer> nearby = new java.util.HashSet<>();
+        double radiusSq = (double) NOTIFY_RADIUS * NOTIFY_RADIUS;
+        for (Player player : cachedNearbyPlayers) {
+            if (!(player instanceof ServerPlayer serverPlayer)
+                    || !serverPlayer.isAlive()
+                    || serverPlayer.level() != level
+                    || serverPlayer.distanceToSqr(Vec3.atCenterOf(worldPosition)) > radiusSq) {
+                continue;
+            }
+            nearby.add(serverPlayer);
+            battleBossEvent.addPlayer(serverPlayer);
+        }
+        for (ServerPlayer tracked : java.util.List.copyOf(battleBossEvent.getPlayers())) {
+            if (!nearby.contains(tracked)) battleBossEvent.removePlayer(tracked);
+        }
+        int maxStability = Math.max(1, TurretConfig.PSYCHIC_BEACON_STABILITY.get());
+        battleBossEvent.setProgress(Math.max(0.0F, Math.min(1.0F, (float) stability / maxStability)));
+        if (beaconState == STATE_WARNING || stability <= maxStability / 4) {
+            battleBossEvent.setColor(BossEvent.BossBarColor.RED);
+        } else if (stability <= maxStability / 2) {
+            battleBossEvent.setColor(BossEvent.BossBarColor.YELLOW);
+        } else {
+            battleBossEvent.setColor(BossEvent.BossBarColor.PURPLE);
+        }
+        long remainingSeconds = Math.max(0L, getTimeUntilDawn() / 20L);
+        battleBossEvent.setName(Component.translatable(
+                "hud.flux_turret.psychic_beacon.battle",
+                stability,
+                maxStability,
+                todayKills,
+                getRequiredKillsForCurrentBattle(),
+                remainingSeconds / 60L,
+                String.format("%02d", remainingSeconds % 60L),
+                Component.translatable(getAffixTranslationKey(activeWaveAffix))));
     }
 
     /**
@@ -1288,6 +1518,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         CompoundTag data = mob.getPersistentData();
         data.putBoolean(BEACON_SPAWN_TAG, true);
         data.putLong(BEACON_POS_TAG, beaconPos.asLong());
+        if (TurretConfig.PSYCHIC_BEACON_MARK_EVENT_MOBS.get()) {
+            mob.setGlowingTag(true);
+        }
     }
 
     @Nullable
@@ -1300,6 +1533,9 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     public static void ensureMoveToBeaconGoal(Mob mob, BlockPos beaconPos) {
+        if (TurretConfig.PSYCHIC_BEACON_MARK_EVENT_MOBS.get()) {
+            mob.setGlowingTag(true);
+        }
         boolean alreadyInstalled = mob.goalSelector.getAvailableGoals().stream()
                 .anyMatch(wrapped -> wrapped.getGoal() instanceof MoveToBeaconGoal goal
                         && goal.getTargetPos().equals(beaconPos));
@@ -1415,14 +1651,31 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     private static void failAndExplode(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
+        int partialKills = be.todayKills;
         abortBattle(level, pos, be, false);
-        be.clearPendingReward();
+        be.stability = 0;
         be.beaconState = STATE_FAILED;
         be.notifyNearbyPlayers(Component.translatable("message.flux_turret.beacon_stability_failure")
                 .withStyle(net.minecraft.ChatFormatting.DARK_RED));
 
-        // Use BLOCK interaction mode to respect explosion protection
-        level.explode(null, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5, 5.0f, Level.ExplosionInteraction.BLOCK);
+        // A failed defense still returns a small amount of field data/material so
+        // the player has a reason to repair and try again instead of abandoning it.
+        if (partialKills > 0) {
+            int shards = 1 + Math.min(5, partialKills / 4);
+            int redstone = 2 + Math.min(12, partialKills / 2);
+            net.minecraft.world.level.block.Block.popResource(level, pos.above(),
+                    new ItemStack(Items.AMETHYST_SHARD, shards));
+            net.minecraft.world.level.block.Block.popResource(level, pos.above(),
+                    new ItemStack(Items.REDSTONE, redstone));
+            be.notifyNearbyPlayers(Component.translatable(
+                    "message.flux_turret.beacon_failure_salvage", shards, redstone)
+                    .withStyle(net.minecraft.ChatFormatting.GOLD));
+        }
+
+        // Failure is now a recoverable equipment state. The pulse still hurts at
+        // close range, but never destroys the beacon, its pyramid, or nearby builds.
+        level.explode(null, pos.getX() + 0.5, pos.getY() + 1, pos.getZ() + 0.5,
+                2.5f, Level.ExplosionInteraction.NONE);
 
         RandomSource random = level.random;
         if (random.nextFloat() < 0.5f) {
@@ -1439,17 +1692,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         net.minecraft.world.entity.AreaEffectCloud cloud = new net.minecraft.world.entity.AreaEffectCloud(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5);
-        cloud.setRadius(15.0F);
-        cloud.setDuration(24000);
+        cloud.setRadius(6.0F);
+        cloud.setDuration(120);
         cloud.setParticle(ParticleTypes.PORTAL);
         cloud.addEffect(new MobEffectInstance(MobEffects.WITHER, 100, 0));
         cloud.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 100, 0));
         level.addFreshEntity(cloud);
-
-        if (level.getBlockState(pos.above()).is(ModRegistry.PSYCHIC_BEACON_BLOCK.get())) {
-            level.removeBlock(pos.above(), false);
-        }
-        level.removeBlock(pos, false);
+        be.setChanged();
+        level.sendBlockUpdated(pos, be.getBlockState(), be.getBlockState(), 3);
     }
 
     private static void emergencyShutdown(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
@@ -1460,6 +1710,132 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         be.beaconState = STATE_OFFLINE;
         be.setChanged();
         level.sendBlockUpdated(pos, be.getBlockState(), be.getBlockState(), 3);
+    }
+
+    /**
+     * Safely ends a defense before a player dismantles the multiblock. An earned
+     * reward must be recovered or delivered first; otherwise removal is denied so
+     * its persisted exactly-once state cannot disappear with the block entity.
+     */
+    public boolean prepareForPlayerRemoval(Player player) {
+        if (level == null || level.isClientSide) return true;
+        if (!canPlayerConfigure(player)) {
+            player.displayClientMessage(Component.translatable("message.flux_turret.beacon_access_denied")
+                    .withStyle(net.minecraft.ChatFormatting.RED), true);
+            return false;
+        }
+        refreshNearbyPlayers(level);
+        if (battleInProgress) {
+            player.displayClientMessage(Component.translatable(
+                            "message.flux_turret.beacon_battle_blocks_removal")
+                    .withStyle(net.minecraft.ChatFormatting.RED), true);
+            return false;
+        }
+        if (pendingReward) {
+            pendingDeliveryRetryCooldown = 0;
+            tryDeliverPendingReward();
+            player.displayClientMessage(Component.translatable(
+                            "message.flux_turret.beacon_reward_blocks_removal")
+                    .withStyle(net.minecraft.ChatFormatting.YELLOW), true);
+            return false;
+        }
+        cleanupBeaconSpawnedMonsters(level, worldPosition);
+        battleBossEvent.removeAllPlayers();
+        return true;
+    }
+
+    /**
+     * State safe to carry on a dropped block item. Live battle/reward fields are
+     * deliberately excluded; their presence already prevents player removal.
+     */
+    public void savePortableData(CompoundTag tag) {
+        tag.put("Energy", energyStorage.serializeNBT());
+        tag.putInt("BeaconState", STATE_OFFLINE);
+        tag.putInt("Stability", TurretConfig.PSYCHIC_BEACON_STABILITY.get());
+        tag.putInt("ThreatLevel", 0);
+        tag.putInt("SelectedBuffMask", selectedBuffMask);
+        tag.putInt("Doctrine", doctrine);
+        tag.putBoolean("Enabled", false);
+        tag.putLong("LastDefenseDay", lastDefenseDay);
+        if (ownerUuid != null) tag.putUUID("Owner", ownerUuid);
+        if (!ownerName.isEmpty()) tag.putString("OwnerName", ownerName);
+    }
+
+    /** Return whether a player may use/break a still-protected beacon reward chest. */
+    public static boolean canPlayerAccessRewardChest(Player player, BlockEntity blockEntity) {
+        if (!(blockEntity instanceof ChestBlockEntity chest)) return true;
+        CompoundTag data = findRewardProtectionData(player.level(), chest);
+        if (data == null
+                || !isRewardProtectionActive(player.level().getGameTime(),
+                        data.getLong(REWARD_CHEST_PROTECTED_UNTIL_TAG))) {
+            return true;
+        }
+        if (player instanceof FakePlayer) return false;
+        if (player.hasPermissions(2)) return true;
+        if (data.hasUUID(REWARD_CHEST_OWNER_TAG)
+                && data.getUUID(REWARD_CHEST_OWNER_TAG).equals(player.getUUID())) {
+            return true;
+        }
+        if (player.getTeam() != null && data.contains(REWARD_CHEST_OWNER_NAME_TAG, Tag.TAG_STRING)) {
+            net.minecraft.world.scores.PlayerTeam ownerTeam = player.level().getScoreboard()
+                    .getPlayersTeam(data.getString(REWARD_CHEST_OWNER_NAME_TAG));
+            return ownerTeam != null && ownerTeam == player.getTeam();
+        }
+        return false;
+    }
+
+    static boolean isRewardProtectionActive(long gameTime, long protectedUntil) {
+        return protectedUntil > gameTime;
+    }
+
+    /** Return whether this is one of our data-tagged reward chests. */
+    public static boolean isRewardChest(BlockEntity blockEntity) {
+        return blockEntity instanceof ChestBlockEntity chest
+                && chest.getPersistentData().hasUUID(REWARD_CHEST_ID_TAG);
+    }
+
+    /** Server-authoritative protection check shared by events and automation wrappers. */
+    public static boolean isRewardChestProtectionActive(Level level, BlockEntity blockEntity) {
+        if (!(blockEntity instanceof ChestBlockEntity chest)) return false;
+        CompoundTag data = chest.getPersistentData();
+        return data.hasUUID(REWARD_CHEST_ID_TAG)
+                && data.contains(REWARD_CHEST_PROTECTED_UNTIL_TAG, Tag.TAG_ANY_NUMERIC)
+                && isRewardProtectionActive(level.getGameTime(),
+                        data.getLong(REWARD_CHEST_PROTECTED_UNTIL_TAG));
+    }
+
+    /** Prevent a newly placed normal chest from joining a protected reward chest. */
+    public static boolean hasAdjacentProtectedRewardChest(Level level, BlockPos pos) {
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            if (isRewardChestProtectionActive(level,
+                    level.getBlockEntity(pos.relative(direction)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Nullable
+    private static CompoundTag findRewardProtectionData(Level level, ChestBlockEntity chest) {
+        CompoundTag ownData = chest.getPersistentData();
+        if (ownData.hasUUID(REWARD_CHEST_ID_TAG)
+                && ownData.contains(REWARD_CHEST_PROTECTED_UNTIL_TAG, Tag.TAG_ANY_NUMERIC)) {
+            return ownData;
+        }
+        // A player can connect a normal chest and open the combined inventory from
+        // its untagged half. Treat an adjacent protected reward chest as the same
+        // protected inventory so that shortcut cannot bypass the grace period.
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            BlockEntity neighbor = level.getBlockEntity(chest.getBlockPos().relative(direction));
+            if (neighbor instanceof ChestBlockEntity neighborChest) {
+                CompoundTag neighborData = neighborChest.getPersistentData();
+                if (neighborData.hasUUID(REWARD_CHEST_ID_TAG)
+                        && neighborData.contains(REWARD_CHEST_PROTECTED_UNTIL_TAG, Tag.TAG_ANY_NUMERIC)) {
+                    return neighborData;
+                }
+            }
+        }
+        return null;
     }
 
     @Nullable
@@ -1516,7 +1892,16 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
 
     private static boolean canPlaceChestAt(Level level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
-        return state.isAir() || state.canBeReplaced();
+        if (!(state.isAir() || state.canBeReplaced())) return false;
+        // A reward must always start as a single chest. Besides avoiding accidental
+        // ownership of somebody else's half, this keeps protection and recovery
+        // semantics unambiguous.
+        for (Direction direction : Direction.Plane.HORIZONTAL) {
+            if (level.getBlockState(pos.relative(direction)).getBlock() instanceof ChestBlock) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static void fillVictoryChestDynamic(Level level, BlockPos beaconPos, Container chest,
@@ -1540,9 +1925,13 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         }
 
         if (threatLevel >= 1 && totalFillSlots > 4) {
-            insertReward(chest, new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get()));
+            int crystalEnergy = Math.max(1, TurretConfig.ENERGY_CRYSTAL_CAPACITY.get()
+                    * Math.min(65, 25 + threatLevel * 10) / 100);
+            insertReward(chest, EnergyCrystalItem.createChargedStack(
+                    ModRegistry.ENERGY_CRYSTAL_ITEM.get(), crystalEnergy));
             if (random.nextBoolean()) {
-                insertReward(chest, new ItemStack(ModRegistry.ENERGY_CRYSTAL_ITEM.get()));
+                insertReward(chest, EnergyCrystalItem.createChargedStack(
+                        ModRegistry.ENERGY_CRYSTAL_ITEM.get(), crystalEnergy));
             }
         }
 
@@ -1550,9 +1939,10 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             insertReward(chest, new ItemStack(Items.DIAMOND, 1 + random.nextInt(2)));
         }
 
-        if (threatLevel >= 3 && level instanceof ServerLevel serverLevel) {
+        if (threatLevel >= 1 && level instanceof ServerLevel serverLevel) {
             LootTable lootTable = serverLevel.getServer().getLootData().getLootTable(
-                    net.minecraft.world.level.storage.loot.BuiltInLootTables.END_CITY_TREASURE);
+                    ResourceLocation.fromNamespaceAndPath(FluxTurretMod.MOD_ID,
+                            "chests/psychic_beacon_tier" + Math.max(1, Math.min(4, threatLevel))));
             LootParams params = new LootParams.Builder(serverLevel)
                     .withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(beaconPos))
                     .create(LootContextParamSets.CHEST);
@@ -1566,14 +1956,17 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
             insertReward(chest, new ItemStack(Items.NETHER_STAR));
         }
 
+        java.util.Set<TurretUpgradeType> awardedModules = new java.util.HashSet<>();
         if (battleScore >= 260) {
-            insertReward(chest, randomUpgradeModule(random));
+            insertReward(chest, randomUpgradeModule(random, doctrine, awardedModules));
         }
         if (battleScore >= 520) {
-            insertReward(chest, randomUpgradeModule(random));
+            insertReward(chest, randomUpgradeModule(random, doctrine, awardedModules));
         }
         if (battleScore >= 650 && random.nextFloat() < 0.35f) {
-            insertReward(chest, new ItemStack(ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get()));
+            insertReward(chest, EnergyCrystalItem.createChargedStack(
+                    ModRegistry.EMPOWERED_ENERGY_CRYSTAL_ITEM.get(),
+                    TurretConfig.ENERGY_CRYSTAL_CAPACITY.get() * 2));
         }
     }
 
@@ -1600,7 +1993,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return false;
     }
 
-    private static int calculateBattleScore(int threatLevel, int kills, int stability, int affix, int doctrine) {
+    public static int calculateBattleScore(int threatLevel, int kills, int stability, int affix, int doctrine) {
         int score = threatLevel * 90 + kills * 24 + Math.max(0, stability) * 2;
         if (affix != AFFIX_NONE) {
             score += 60;
@@ -1613,21 +2006,50 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         return Math.max(0, score);
     }
 
-    private static ItemStack randomUpgradeModule(RandomSource random) {
-        return switch (random.nextInt(12)) {
-            case 0 -> new ItemStack(ModRegistry.ARMOR_PIERCING_ROUNDS_MODULE.get());
-            case 1 -> new ItemStack(ModRegistry.FIRE_ROUNDS_MODULE.get());
-            case 2 -> new ItemStack(ModRegistry.SLOW_ROUNDS_MODULE.get());
-            case 3 -> new ItemStack(ModRegistry.CHAIN_JUMP_MODULE.get());
-            case 4 -> new ItemStack(ModRegistry.EMP_SLOW_MODULE.get());
-            case 5 -> new ItemStack(ModRegistry.OVERLOAD_BURST_MODULE.get());
-            case 6 -> new ItemStack(ModRegistry.FOCUSED_BEAM_MODULE.get());
-            case 7 -> new ItemStack(ModRegistry.REFRACTION_BEAM_MODULE.get());
-            case 8 -> new ItemStack(ModRegistry.REMOTE_SUPPORT_MODULE.get());
-            case 9 -> new ItemStack(ModRegistry.SEISMIC_SHOCK_MODULE.get());
-            case 10 -> new ItemStack(ModRegistry.ARMOR_BREAK_MODULE.get());
-            default -> new ItemStack(ModRegistry.CLUSTER_SHELLS_MODULE.get());
+    private static ItemStack randomUpgradeModule(RandomSource random, int doctrine,
+                                                  java.util.Set<TurretUpgradeType> excluded) {
+        TurretUpgradeType[] preferred = switch (doctrine) {
+            case DOCTRINE_GUARD -> new TurretUpgradeType[]{
+                    TurretUpgradeType.SLOW_ROUNDS, TurretUpgradeType.EMP_SLOW,
+                    TurretUpgradeType.REMOTE_SUPPORT, TurretUpgradeType.SEISMIC_SHOCK,
+                    TurretUpgradeType.ARMOR_PIERCING_ROUNDS, TurretUpgradeType.ARMOR_BREAK};
+            case DOCTRINE_LURE -> new TurretUpgradeType[]{
+                    TurretUpgradeType.FIRE_ROUNDS, TurretUpgradeType.CHAIN_JUMP,
+                    TurretUpgradeType.OVERLOAD_BURST, TurretUpgradeType.REFRACTION_BEAM,
+                    TurretUpgradeType.CLUSTER_SHELLS, TurretUpgradeType.FOCUSED_BEAM};
+            default -> new TurretUpgradeType[]{
+                    TurretUpgradeType.SLOW_ROUNDS, TurretUpgradeType.EMP_SLOW,
+                    TurretUpgradeType.ARMOR_BREAK, TurretUpgradeType.SEISMIC_SHOCK,
+                    TurretUpgradeType.REMOTE_SUPPORT, TurretUpgradeType.ARMOR_PIERCING_ROUNDS};
         };
+
+        java.util.List<TurretUpgradeType> candidates = new java.util.ArrayList<>();
+        for (TurretUpgradeType type : preferred) if (!excluded.contains(type)) candidates.add(type);
+        if (candidates.isEmpty()) {
+            for (TurretUpgradeType type : TurretUpgradeType.values()) {
+                if (!excluded.contains(type)) candidates.add(type);
+            }
+        }
+        TurretUpgradeType selected = candidates.get(random.nextInt(candidates.size()));
+        excluded.add(selected);
+        return moduleStack(selected);
+    }
+
+    private static ItemStack moduleStack(TurretUpgradeType type) {
+        return new ItemStack(switch (type) {
+            case ARMOR_PIERCING_ROUNDS -> ModRegistry.ARMOR_PIERCING_ROUNDS_MODULE.get();
+            case FIRE_ROUNDS -> ModRegistry.FIRE_ROUNDS_MODULE.get();
+            case SLOW_ROUNDS -> ModRegistry.SLOW_ROUNDS_MODULE.get();
+            case CHAIN_JUMP -> ModRegistry.CHAIN_JUMP_MODULE.get();
+            case EMP_SLOW -> ModRegistry.EMP_SLOW_MODULE.get();
+            case OVERLOAD_BURST -> ModRegistry.OVERLOAD_BURST_MODULE.get();
+            case FOCUSED_BEAM -> ModRegistry.FOCUSED_BEAM_MODULE.get();
+            case REFRACTION_BEAM -> ModRegistry.REFRACTION_BEAM_MODULE.get();
+            case REMOTE_SUPPORT -> ModRegistry.REMOTE_SUPPORT_MODULE.get();
+            case SEISMIC_SHOCK -> ModRegistry.SEISMIC_SHOCK_MODULE.get();
+            case ARMOR_BREAK -> ModRegistry.ARMOR_BREAK_MODULE.get();
+            case CLUSTER_SHELLS -> ModRegistry.CLUSTER_SHELLS_MODULE.get();
+        });
     }
 
     /**
@@ -1655,27 +2077,42 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     }
 
     public int scanPyramidLevel(Level level, BlockPos pos) {
-        if (!checkLayer(level, pos.below(), 1)) return 0;
-        if (!checkLayer(level, pos.below(2), 2)) return 1;
-        if (!checkLayer(level, pos.below(3), 3)) return 2;
-        if (!checkLayer(level, pos.below(4), 4)) return 3;
+        for (int radius = 1; radius <= 4; radius++) {
+            int missing = scanLayer(level, pos, radius);
+            if (missing > 0) return radius - 1;
+        }
+        missingStructureBlocks = 0;
+        firstMissingStructureDx = 0;
+        firstMissingStructureDy = 0;
+        firstMissingStructureDz = 0;
         return 4;
     }
 
-    private boolean checkLayer(Level level, BlockPos center, int radius) {
+    private int scanLayer(Level level, BlockPos beaconPos, int radius) {
+        BlockPos center = beaconPos.below(radius);
+        int missing = 0;
+        BlockPos firstMissing = null;
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                net.minecraft.world.level.block.Block block = level.getBlockState(center.offset(x, 0, z)).getBlock();
+                BlockPos candidate = center.offset(x, 0, z);
+                net.minecraft.world.level.block.Block block = level.getBlockState(candidate).getBlock();
                 if (block != Blocks.IRON_BLOCK
                         && block != Blocks.GOLD_BLOCK
                         && block != Blocks.DIAMOND_BLOCK
                         && block != Blocks.EMERALD_BLOCK
                         && block != Blocks.NETHERITE_BLOCK) {
-                    return false;
+                    missing++;
+                    if (firstMissing == null) firstMissing = candidate;
                 }
             }
         }
-        return true;
+        if (missing > 0 && firstMissing != null) {
+            missingStructureBlocks = missing;
+            firstMissingStructureDx = firstMissing.getX() - beaconPos.getX();
+            firstMissingStructureDy = firstMissing.getY() - beaconPos.getY();
+            firstMissingStructureDz = firstMissing.getZ() - beaconPos.getZ();
+        }
+        return missing;
     }
 
     private static void clientTick(Level level, BlockPos pos, PsychicBeaconBlockEntity be) {
@@ -1744,6 +2181,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         tag.putInt("PendingScore", pendingScore);
         tag.putBoolean("PendingEnergyNoticeSent", pendingEnergyNoticeSent);
         tag.putBoolean("PendingSpaceNoticeSent", pendingSpaceNoticeSent);
+        tag.putBoolean("PendingSpaceBlocked", pendingSpaceBlocked);
         if (pendingRewardId != null) tag.putUUID("PendingRewardId", pendingRewardId);
         tag.putBoolean("PendingEnergyReserved", pendingEnergyReserved);
     }
@@ -1802,6 +2240,7 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
         pendingScore = pendingReward ? Math.max(0, tag.getInt("PendingScore")) : 0;
         pendingEnergyNoticeSent = pendingReward && tag.getBoolean("PendingEnergyNoticeSent");
         pendingSpaceNoticeSent = pendingReward && tag.getBoolean("PendingSpaceNoticeSent");
+        pendingSpaceBlocked = pendingReward && tag.getBoolean("PendingSpaceBlocked");
         pendingRewardId = pendingReward && tag.hasUUID("PendingRewardId")
                 ? tag.getUUID("PendingRewardId") : null;
         pendingEnergyReserved = pendingReward && tag.getBoolean("PendingEnergyReserved");
@@ -1889,6 +2328,14 @@ public class PsychicBeaconBlockEntity extends BlockEntity implements GeoBlockEnt
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
         refreshNearbyTurretCounts();
+        if (level != null && !level.isClientSide) {
+            int scannedThreat = scanPyramidLevel(level, worldPosition);
+            if (!battleInProgress && scannedThreat != threatLevel) {
+                threatLevel = scannedThreat;
+                selectedBuffMask = normalizeSelectedBuffMask(selectedBuffMask, threatLevel);
+                setChanged();
+            }
+        }
         return new PsychicBeaconMenu(containerId, playerInventory, this);
     }
 }

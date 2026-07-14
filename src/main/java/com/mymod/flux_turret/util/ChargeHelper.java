@@ -27,6 +27,12 @@ public class ChargeHelper {
         return Math.max(0, Math.min(15, signal));
     }
 
+    /** Safely convert a per-unit FE rate into a total recipe/manual charge. */
+    public static int totalCharge(int chargePerUnit, int units) {
+        if (chargePerUnit <= 0 || units <= 0) return 0;
+        return (int) Math.min(Integer.MAX_VALUE, (long) chargePerUnit * units);
+    }
+
     public static InteractionResult tryRedstoneCharge(
             Level level, BlockPos pos, BlockState state,
             Player player, ItemStack heldItem,

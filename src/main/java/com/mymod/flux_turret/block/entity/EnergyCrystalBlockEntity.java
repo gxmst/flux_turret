@@ -32,7 +32,6 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
     private int activeTicks = 0;
     private boolean charging = false;
-    private int tickCounter = 0;
     private int outputDirectionCursor = 0;
 
     public EnergyCrystalBlockEntity(BlockPos pos, BlockState state) {
@@ -63,17 +62,12 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
     public static void tick(Level level, BlockPos pos, BlockState state, EnergyCrystalBlockEntity be) {
         if (level.isClientSide) return;
 
-        be.energyStorage.applyConfig();
-        be.energyStorage.refreshOutputBudget(level.getGameTime());
-        be.syncHasEnergyState();
-
         boolean wasActive = be.activeTicks > 0;
         if (be.activeTicks > 0) {
             be.activeTicks--;
         }
 
-        be.tickCounter++;
-        if (be.tickCounter % TICK_INTERVAL != 0) {
+        if (!shouldRunScheduledWork(level.getGameTime(), pos)) {
             if (wasActive && be.activeTicks == 0) {
                 be.setChanged();
                 BlockState currentState = be.getBlockState();
@@ -81,6 +75,13 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             }
             return;
         }
+
+        // Config reads, furnace checks and neighbor capability scans are spread
+        // across five game ticks based on position instead of spiking together
+        // whenever a chunk full of crystals loads.
+        be.energyStorage.applyConfig();
+        be.energyStorage.refreshOutputBudget(level.getGameTime());
+        be.syncHasEnergyState();
 
         int capacity = be.energyStorage.getMaxEnergyStored();
         int chargeRate = TurretConfig.ENERGY_CRYSTAL_CHARGE_RATE.get() * be.getEnergyMultiplier() * TICK_INTERVAL;
@@ -149,6 +150,11 @@ public class EnergyCrystalBlockEntity extends BlockEntity implements GeoBlockEnt
             BlockState currentState = be.getBlockState();
             level.sendBlockUpdated(pos, currentState, currentState, 3);
         }
+    }
+
+    static boolean shouldRunScheduledWork(long gameTime, BlockPos pos) {
+        long hash = (long) pos.getX() * 31L + (long) pos.getY() * 17L + (long) pos.getZ() * 13L;
+        return Math.floorMod(gameTime + hash, TICK_INTERVAL) == 0L;
     }
 
     /** Keep the blockstate and comparator-visible energy state current for all mutation paths. */

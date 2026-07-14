@@ -26,6 +26,7 @@ public class TurretConfig {
 
     // Grand Cannon
     public static final ForgeConfigSpec.DoubleValue GRAND_CANNON_RANGE;
+    public static final ForgeConfigSpec.DoubleValue GRAND_CANNON_MIN_RANGE;
     public static final ForgeConfigSpec.DoubleValue GRAND_CANNON_DAMAGE;
     public static final ForgeConfigSpec.DoubleValue GRAND_CANNON_EXPLOSION_RADIUS;
     public static final ForgeConfigSpec.IntValue GRAND_CANNON_FIRE_COST;
@@ -49,6 +50,12 @@ public class TurretConfig {
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_DAWN_COST;
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_MIN_KILLS;
     public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_DRAIN_RATE;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_REWARD_RETRY_INTERVAL;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_REWARD_PROTECTION_TICKS;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_REPAIR_SHARDS;
+    public static final ForgeConfigSpec.BooleanValue PSYCHIC_BEACON_BOSS_BAR;
+    public static final ForgeConfigSpec.BooleanValue PSYCHIC_BEACON_MARK_EVENT_MOBS;
+    public static final ForgeConfigSpec.IntValue PSYCHIC_BEACON_SLEEP_BLOCK_RADIUS;
 
     // General
     public static final ForgeConfigSpec.BooleanValue FRIENDLY_FIRE_PROTECTION;
@@ -80,6 +87,8 @@ public class TurretConfig {
 
         builder.comment("Grand Cannon Settings").push("grand_cannon");
         GRAND_CANNON_RANGE = builder.comment("Target detection range").defineInRange("range", 64.0, 1.0, 160.0);
+        GRAND_CANNON_MIN_RANGE = builder.comment("Minimum firing range / close blind zone")
+                .defineInRange("minRange", 10.0, 0.0, 32.0);
         GRAND_CANNON_DAMAGE = builder.comment("Damage per shell (applied to all entities in explosion radius)").defineInRange("damage", 50.0, 1.0, 500.0);
         GRAND_CANNON_EXPLOSION_RADIUS = builder.comment("Explosion radius (area damage, no block destruction)").defineInRange("explosionRadius", 5.0, 1.0, 20.0);
         GRAND_CANNON_FIRE_COST = builder.comment("Energy cost per shot").defineInRange("fireCost", 8000, 100, 1000000);
@@ -105,6 +114,19 @@ public class TurretConfig {
         PSYCHIC_BEACON_DAWN_COST = builder.comment("FE cost for dawn synthesis").defineInRange("dawnCost", 15000, 5000, 50000);
         PSYCHIC_BEACON_MIN_KILLS = builder.comment("Minimum kills required for dawn synthesis").defineInRange("minKills", 5, 1, 20);
         PSYCHIC_BEACON_DRAIN_RATE = builder.comment("FE per tick drain rate").defineInRange("drainRate", 2, 1, 20);
+        PSYCHIC_BEACON_REWARD_RETRY_INTERVAL = builder.comment("Ticks between pending reward delivery scans")
+                .defineInRange("rewardRetryInterval", 40, 10, 1200);
+        PSYCHIC_BEACON_REWARD_PROTECTION_TICKS = builder.comment("Ticks that a newly-created reward chest is protected for the beacon owner/team")
+                .defineInRange("rewardProtectionTicks", 1200, 0, 72000);
+        PSYCHIC_BEACON_REPAIR_SHARDS = builder.comment("Amethyst shards required to repair a failed beacon")
+                .defineInRange("repairShards", 4, 1, 64);
+        PSYCHIC_BEACON_BOSS_BAR = builder.comment("Show a battle HUD to nearby players")
+                .define("bossBar", true);
+        PSYCHIC_BEACON_MARK_EVENT_MOBS = builder.comment("Give beacon-spawned enemies a subtle glowing outline")
+                .define("markEventMobs", true);
+        PSYCHIC_BEACON_SLEEP_BLOCK_RADIUS = builder.comment(
+                        "Radius in blocks where an active battle prevents sleep; 0 means dimension-wide")
+                .defineInRange("sleepBlockRadius", 96, 0, 30000000);
         builder.pop();
 
         builder.comment("General Settings").push("general");

@@ -18,4 +18,12 @@ class ChargeHelperTest {
         assertEquals(15, ChargeHelper.energySignal(100, 100));
         assertEquals(15, ChargeHelper.energySignal(200, 100));
     }
+
+    @Test
+    void totalChargeUsesRateWithoutOverflowOrNegativeEnergy() {
+        assertEquals(10_000, ChargeHelper.totalCharge(50, 200));
+        assertEquals(0, ChargeHelper.totalCharge(-50, 200));
+        assertEquals(0, ChargeHelper.totalCharge(50, 0));
+        assertEquals(Integer.MAX_VALUE, ChargeHelper.totalCharge(Integer.MAX_VALUE, 2));
+    }
 }

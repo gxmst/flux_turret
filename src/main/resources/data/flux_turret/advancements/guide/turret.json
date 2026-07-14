@@ -1,0 +1,45 @@
+{
+  "parent": "flux_turret:guide/energy_crystal",
+  "display": {
+    "icon": {
+      "item": "flux_turret:gatling_turret"
+    },
+    "title": {
+      "translate": "advancement.flux_turret.turret.title"
+    },
+    "description": {
+      "translate": "advancement.flux_turret.turret.description"
+    },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "has_turret": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "flux_turret:gatling_turret",
+              "flux_turret:tesla_coil",
+              "flux_turret:prism_tower",
+              "flux_turret:grand_cannon"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_turret"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "flux_turret:psychic_beacon"
+    ]
+  }
+}

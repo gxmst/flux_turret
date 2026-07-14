@@ -19,4 +19,12 @@ class TurretUpgradeTypeTest {
         }
         assertEquals(TurretUpgradeType.values().length, masks.size());
     }
+
+    @Test
+    void everyTurretFamilyHasOneUtilityAndTwoWeaponChoices() {
+        assertEquals(8, java.util.Arrays.stream(TurretUpgradeType.values())
+                .filter(type -> type.getSlot() == TurretUpgradeType.Slot.WEAPON).count());
+        assertEquals(4, java.util.Arrays.stream(TurretUpgradeType.values())
+                .filter(type -> type.getSlot() == TurretUpgradeType.Slot.UTILITY).count());
+    }
 }

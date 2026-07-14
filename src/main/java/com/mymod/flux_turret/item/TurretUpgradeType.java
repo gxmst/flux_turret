@@ -1,23 +1,30 @@
 package com.mymod.flux_turret.item;
 
 public enum TurretUpgradeType {
-    ARMOR_PIERCING_ROUNDS("armor_piercing_rounds"),
-    FIRE_ROUNDS("fire_rounds"),
-    SLOW_ROUNDS("slow_rounds"),
-    CHAIN_JUMP("chain_jump"),
-    EMP_SLOW("emp_slow"),
-    OVERLOAD_BURST("overload_burst"),
-    FOCUSED_BEAM("focused_beam"),
-    REFRACTION_BEAM("refraction_beam"),
-    REMOTE_SUPPORT("remote_support"),
-    SEISMIC_SHOCK("seismic_shock"),
-    ARMOR_BREAK("armor_break"),
-    CLUSTER_SHELLS("cluster_shells");
+    ARMOR_PIERCING_ROUNDS("armor_piercing_rounds", Slot.WEAPON),
+    FIRE_ROUNDS("fire_rounds", Slot.WEAPON),
+    SLOW_ROUNDS("slow_rounds", Slot.UTILITY),
+    CHAIN_JUMP("chain_jump", Slot.WEAPON),
+    EMP_SLOW("emp_slow", Slot.UTILITY),
+    OVERLOAD_BURST("overload_burst", Slot.WEAPON),
+    FOCUSED_BEAM("focused_beam", Slot.WEAPON),
+    REFRACTION_BEAM("refraction_beam", Slot.WEAPON),
+    REMOTE_SUPPORT("remote_support", Slot.UTILITY),
+    SEISMIC_SHOCK("seismic_shock", Slot.UTILITY),
+    ARMOR_BREAK("armor_break", Slot.WEAPON),
+    CLUSTER_SHELLS("cluster_shells", Slot.WEAPON);
+
+    public enum Slot {
+        WEAPON,
+        UTILITY
+    }
 
     private final String id;
+    private final Slot slot;
 
-    TurretUpgradeType(String id) {
+    TurretUpgradeType(String id, Slot slot) {
         this.id = id;
+        this.slot = slot;
     }
 
     public String getId() {
@@ -26,6 +33,10 @@ public enum TurretUpgradeType {
 
     public int getMask() {
         return 1 << ordinal();
+    }
+
+    public Slot getSlot() {
+        return slot;
     }
 
     public String getDescriptionKey() {

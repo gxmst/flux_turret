@@ -1,5 +1,5 @@
 {
-    "type": "minecraft:crafting_shapeless",
+    "type": "flux_turret:redstone_charged_crystal",
     "ingredients": [
         {
             "item": "flux_turret:empty_crystal"

@@ -3,10 +3,13 @@ package com.mymod.flux_turret.client.renderer;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mymod.flux_turret.block.entity.TurretBlockEntityBase;
+import com.mymod.flux_turret.client.TurretClientConfig;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.world.phys.Vec3;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.texture.AutoGlowingTexture;
 import software.bernie.geckolib.renderer.GeoRenderer;
@@ -45,6 +48,14 @@ public class UpgradeGlowLayer<T extends TurretBlockEntityBase> extends GeoRender
             return;
         }
         if (animatable.getLevel() == null) {
+            return;
+        }
+        double renderDistance = TurretClientConfig.upgradeGlowDistance();
+        if (renderDistance <= 0.0) {
+            return;
+        }
+        Vec3 cameraPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
+        if (Vec3.atCenterOf(animatable.getBlockPos()).distanceToSqr(cameraPos) > renderDistance * renderDistance) {
             return;
         }
 

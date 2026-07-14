@@ -7,7 +7,9 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.ShapedRecipe;
@@ -39,5 +41,22 @@ public class FluxTurretJeiPlugin implements IModPlugin {
                 .map(r -> (ShapedRecipe) r)
                 .collect(Collectors.toList());
         registration.addRecipes(TurretRecipeCategory.RECIPE_TYPE, turretRecipes);
+
+        List<ItemStack> upgradeModules = List.of(
+                new ItemStack(ModRegistry.ARMOR_PIERCING_ROUNDS_MODULE.get()),
+                new ItemStack(ModRegistry.FIRE_ROUNDS_MODULE.get()),
+                new ItemStack(ModRegistry.SLOW_ROUNDS_MODULE.get()),
+                new ItemStack(ModRegistry.CHAIN_JUMP_MODULE.get()),
+                new ItemStack(ModRegistry.EMP_SLOW_MODULE.get()),
+                new ItemStack(ModRegistry.OVERLOAD_BURST_MODULE.get()),
+                new ItemStack(ModRegistry.FOCUSED_BEAM_MODULE.get()),
+                new ItemStack(ModRegistry.REFRACTION_BEAM_MODULE.get()),
+                new ItemStack(ModRegistry.REMOTE_SUPPORT_MODULE.get()),
+                new ItemStack(ModRegistry.SEISMIC_SHOCK_MODULE.get()),
+                new ItemStack(ModRegistry.ARMOR_BREAK_MODULE.get()),
+                new ItemStack(ModRegistry.CLUSTER_SHELLS_MODULE.get()));
+        registration.addItemStackInfo(upgradeModules,
+                Component.translatable("jei.flux_turret.upgrade_module.source"),
+                Component.translatable("jei.flux_turret.upgrade_module.recycle"));
     }
 }

@@ -2,13 +2,18 @@ package com.mymod.flux_turret.block.entity;
 
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.item.TurretUpgradeType;
+import com.mymod.flux_turret.item.TurretUpgradeLoadout;
+import com.mymod.flux_turret.util.TurretPerformanceTracker;
+import com.mymod.flux_turret.util.TurretTickSchedule;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -22,6 +27,7 @@ import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.energy.EnergyStorage;
 import net.minecraftforge.energy.IEnergyStorage;
+import net.minecraftforge.common.util.FakePlayer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import software.bernie.geckolib.animatable.GeoBlockEntity;
@@ -34,6 +40,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Predicate;
 
 public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBlockEntity {
     private final AnimatableInstanceCache cache = GeckoLibUtil.createInstanceCache(this);
@@ -60,9 +68,19 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     protected int attackCooldown = 0;
     protected boolean isFiring = false;
     protected long lastFireTime = 0;
-    protected int tickCounter = 0;
     protected List<Mob> monsterCache = List.of();
+    private List<Mob> targetScoringSnapshot = List.of();
     private int upgradeMask = 0;
+    private int activeWeaponUpgradeMask = 0;
+    private int activeUtilityUpgradeMask = 0;
+    private TargetingMode targetingMode = TargetingMode.AUTO;
+    private RedstoneControlMode redstoneControlMode = RedstoneControlMode.DISABLE_WHEN_POWERED;
+    private TurretAccessMode accessMode = TurretAccessMode.TEAM;
+    @Nullable
+    private UUID ownerUuid;
+    private String ownerName = "";
+    private long nextTargetScanTime = Long.MIN_VALUE;
+    private long lastMonsterCacheRefreshTime = Long.MIN_VALUE;
 
     // Keep an acquired target instead of ray-casting every candidate every tick.
     // Cheap liveness/range checks still run every tick; only the expensive path
@@ -128,6 +146,29 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         this.energyHandler = LazyOptional.of(() -> energyStorage);
     }
 
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (isPerformanceTrackedTurret()) TurretPerformanceTracker.registerTurret(this);
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        if (isPerformanceTrackedTurret()) TurretPerformanceTracker.unregisterTurret(this);
+        super.onChunkUnloaded();
+    }
+
+    @Override
+    public void setRemoved() {
+        if (isPerformanceTrackedTurret()) TurretPerformanceTracker.unregisterTurret(this);
+        super.setRemoved();
+    }
+
+    /** Multi-block implementations override this so only their controller is counted. */
+    protected boolean isPerformanceTrackedTurret() {
+        return true;
+    }
+
     protected abstract double getTargetRange();
 
     protected abstract double getEyeHeight();
@@ -171,6 +212,13 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         tag.putLong("LastFireTime", lastFireTime);
         tag.putBoolean("HasPower", visualHasEnergy);
         tag.putInt("UpgradeMask", upgradeMask);
+        tag.putInt("ActiveWeaponUpgrade", activeWeaponUpgradeMask);
+        tag.putInt("ActiveUtilityUpgrade", activeUtilityUpgradeMask);
+        tag.putInt("TargetingMode", targetingMode.ordinal());
+        tag.putInt("RedstoneControlMode", redstoneControlMode.ordinal());
+        tag.putInt("AccessMode", accessMode.ordinal());
+        if (ownerUuid != null) tag.putUUID("Owner", ownerUuid);
+        if (!ownerName.isEmpty()) tag.putString("OwnerName", ownerName);
         tag.putBoolean("HasAim", hasAimTarget);
         if (hasAimTarget) {
             tag.putFloat("AimX", aimTargetX);
@@ -190,6 +238,19 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         lastFireTime = tag.getLong("LastFireTime");
         visualHasEnergy = tag.getBoolean("HasPower");
         upgradeMask = tag.getInt("UpgradeMask");
+        activeWeaponUpgradeMask = tag.contains("ActiveWeaponUpgrade")
+                ? tag.getInt("ActiveWeaponUpgrade") : firstInstalledMask(TurretUpgradeType.Slot.WEAPON);
+        activeUtilityUpgradeMask = tag.contains("ActiveUtilityUpgrade")
+                ? tag.getInt("ActiveUtilityUpgrade") : firstInstalledMask(TurretUpgradeType.Slot.UTILITY);
+        normalizeActiveUpgrades();
+        targetingMode = TargetingMode.fromOrdinal(tag.getInt("TargetingMode"));
+        redstoneControlMode = tag.contains("RedstoneControlMode")
+                ? RedstoneControlMode.fromOrdinal(tag.getInt("RedstoneControlMode"))
+                : RedstoneControlMode.DISABLE_WHEN_POWERED;
+        accessMode = tag.contains("AccessMode")
+                ? TurretAccessMode.fromOrdinal(tag.getInt("AccessMode")) : TurretAccessMode.TEAM;
+        ownerUuid = tag.hasUUID("Owner") ? tag.getUUID("Owner") : null;
+        ownerName = tag.getString("OwnerName");
         hasAimTarget = tag.getBoolean("HasAim");
         if (hasAimTarget) {
             aimTargetX = tag.getFloat("AimX");
@@ -281,11 +342,18 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         if (!isTargetUsable(monster, selfPos)) return false;
         Vec3 eyePos = new Vec3(selfPos.getX() + 0.5, selfPos.getY() + getEyeHeight(), selfPos.getZ() + 0.5);
         Vec3 targetEye = monster.getEyePosition(0.0f);
-        BlockHitResult hitResult = level.clip(new ClipContext(
-                eyePos, targetEye,
-                ClipContext.Block.COLLIDER,
-                ClipContext.Fluid.NONE,
-                null));
+        TurretPerformanceTracker.recordRaycast(level);
+        level.getProfiler().push("flux_turret:raycast");
+        BlockHitResult hitResult;
+        try {
+            hitResult = level.clip(new ClipContext(
+                    eyePos, targetEye,
+                    ClipContext.Block.COLLIDER,
+                    ClipContext.Fluid.NONE,
+                    null));
+        } finally {
+            level.getProfiler().pop();
+        }
         if (hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
             double hitDistSq = hitResult.getLocation().distanceToSqr(eyePos);
             double targetDistSq = targetEye.distanceToSqr(eyePos);
@@ -295,24 +363,88 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     }
 
     protected void refreshMonsterCache(Level level, BlockPos pos) {
-        double x = pos.getX() + 0.5;
-        double y = pos.getY() + getEyeHeight();
-        double z = pos.getZ() + 0.5;
-        double range = getTargetRange();
-        AABB scanArea = new AABB(
-                x - range, y - range, z - range,
-                x + range, y + range, z + range);
+        level.getProfiler().push("flux_turret:target_cache_refresh");
+        try {
+            double x = pos.getX() + 0.5;
+            double y = pos.getY() + getEyeHeight();
+            double z = pos.getZ() + 0.5;
+            double range = getTargetRange();
+            AABB scanArea = new AABB(
+                    x - range, y - range, z - range,
+                    x + range, y + range, z + range);
 
-        // Minecraft's native entity index already performs a single section-aware
-        // AABB query. Precise spherical range and friendly-fire checks are applied in
-        // its predicate, avoiding the former per-column, full-build-height scans.
-        monsterCache = level.getEntitiesOfClass(Mob.class, scanArea,
-                monster -> isTargetUsable(monster, pos));
+            // Minecraft's native entity index already performs a single section-aware
+            // AABB query. Precise spherical range and friendly-fire checks are applied in
+            // its predicate, avoiding the former per-column, full-build-height scans.
+            monsterCache = trackedEntityQuery(level, Mob.class, scanArea,
+                    monster -> isTargetUsable(monster, pos));
+            lastMonsterCacheRefreshTime = level.getGameTime();
 
-        // Sort by threat priority first, then by distance
-        monsterCache.sort(Comparator
-                .comparingInt((Mob m) -> -THREAT_PRIORITY.getOrDefault(m.getType(), 10))
-                .thenComparingDouble(m -> m.distanceToSqr(x, y, z)));
+            if (getEffectiveTargetingMode() == TargetingMode.CLUSTER) {
+                int scoringSize = Math.min(96, monsterCache.size());
+                targetScoringSnapshot = List.copyOf(monsterCache.subList(0, scoringSize));
+            }
+            monsterCache.sort(createTargetComparator(x, y, z));
+        } finally {
+            targetScoringSnapshot = List.of();
+            level.getProfiler().pop();
+        }
+    }
+
+    /**
+     * One instrumented entity query shared by targeting and damage-area scans.
+     * The returned-list size is the useful candidate count; querying a broader list
+     * just to measure rejected entities would itself make the hot path slower.
+     */
+    protected static <T extends Entity> List<T> trackedEntityQuery(
+            Level level, Class<T> entityClass, AABB area, Predicate<? super T> predicate) {
+        level.getProfiler().push("flux_turret:entity_scan");
+        List<T> result;
+        try {
+            result = level.getEntitiesOfClass(entityClass, area, predicate);
+        } finally {
+            level.getProfiler().pop();
+        }
+        TurretPerformanceTracker.recordEntityScan(level, result.size());
+        return result;
+    }
+
+    /** Builds a deterministic comparator while preserving each turret's AUTO role. */
+    protected Comparator<Mob> createTargetComparator(double x, double y, double z) {
+        TargetingMode effective = getEffectiveTargetingMode();
+        Comparator<Mob> primary = switch (effective) {
+            case HIGHEST_HEALTH -> Comparator.comparingDouble((Mob mob) -> -mob.getHealth());
+            case FASTEST -> Comparator.comparingDouble((Mob mob) ->
+                    -mob.getAttributeValue(Attributes.MOVEMENT_SPEED));
+            case HIGHEST_ARMOR -> Comparator.comparingInt((Mob mob) -> -mob.getArmorValue());
+            case CLUSTER -> Comparator.comparingInt((Mob mob) -> -countCachedEnemiesNear(mob, 5.0D));
+            case BEACON_WAVE -> Comparator.comparingInt((Mob mob) ->
+                    mob.getPersistentData().getBoolean("FluxTurretBeaconSpawn") ? 0 : 1);
+            case AUTO, NEAREST -> Comparator.comparingDouble(mob -> mob.distanceToSqr(x, y, z));
+        };
+        return primary
+                .thenComparingInt(mob -> -THREAT_PRIORITY.getOrDefault(mob.getType(), 10))
+                .thenComparingDouble(mob -> mob.distanceToSqr(x, y, z))
+                .thenComparingInt(Entity::getId);
+    }
+
+    protected TargetingMode getAutomaticTargetingMode() {
+        return TargetingMode.NEAREST;
+    }
+
+    private TargetingMode getEffectiveTargetingMode() {
+        return targetingMode == TargetingMode.AUTO ? getAutomaticTargetingMode() : targetingMode;
+    }
+
+    private int countCachedEnemiesNear(Mob center, double radius) {
+        double radiusSqr = radius * radius;
+        int count = 0;
+        // A hard cap keeps pathological mob farms from turning one sort into an
+        // unbounded O(n^2) spike. Counts only choose a target; damage is unaffected.
+        for (Mob candidate : targetScoringSnapshot) {
+            if (candidate.isAlive() && candidate.distanceToSqr(center) <= radiusSqr) count++;
+        }
+        return count;
     }
 
     protected Mob findClosestMonster(Level level, BlockPos pos) {
@@ -321,6 +453,7 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         // tick; obstructions are still noticed within a few ticks.
         int rejectedTargetId = -1;
         if (targetId != -1) {
+            rejectedTargetId = targetId;
             Entity entity = level.getEntity(targetId);
             if (entity instanceof Mob retained && isTargetUsable(retained, pos)) {
                 long now = level.getGameTime();
@@ -331,8 +464,16 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
                     rememberPathValidation(retained, now);
                     return retained;
                 }
-                rejectedTargetId = targetId;
             }
+        }
+
+        // A retained target may fail its periodic path validation between regular
+        // scan phases. Refresh immediately before selecting a replacement so the
+        // stable-target scan elision below never adds another cache interval of
+        // response latency.
+        if (rejectedTargetId != -1 && lastMonsterCacheRefreshTime != level.getGameTime()) {
+            refreshMonsterCache(level, pos);
+            scheduleNextTargetScan(level.getGameTime() + 1L, pos, getTargetCacheInterval());
         }
 
         pathValidatedTargetId = -1;
@@ -355,9 +496,23 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     }
 
     protected boolean isRedstoneBlocked(Level level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        return state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED)
-                && state.getValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.POWERED);
+        return redstoneControlMode.blocks(hasRedstoneSignal(level, pos));
+    }
+
+    protected boolean isSignalBlocked(boolean hasSignal) {
+        return redstoneControlMode.blocks(hasSignal);
+    }
+
+    /**
+     * The physical signal used by both operation checks and diagnostics. Multi-block
+     * turrets override the level-aware form so every consumer sees the same aggregate.
+     */
+    public boolean hasRedstoneSignal() {
+        return level != null && hasRedstoneSignal(level, worldPosition);
+    }
+
+    protected boolean hasRedstoneSignal(Level level, BlockPos pos) {
+        return level.hasNeighborSignal(pos);
     }
 
     protected void baseClientTick(Level level) {
@@ -373,10 +528,39 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     }
 
     protected void refreshMonsterCacheIfNeeded(Level level, BlockPos pos) {
-        tickCounter++;
+        refreshMonsterCacheOnSchedule(level, pos);
+    }
+
+    /** Scheduled variant for turrets that maintain their own non-target tick phases. */
+    protected void refreshMonsterCacheOnSchedule(Level level, BlockPos pos) {
         int interval = Math.max(1, getTargetCacheInterval());
-        if (tickCounter == 1 || tickCounter % interval == 0)
+        long now = level.getGameTime();
+        if (nextTargetScanTime == Long.MIN_VALUE) {
+            nextTargetScanTime = nextScheduledTick(now, pos, interval);
+        }
+
+        if (now < nextTargetScanTime) return;
+
+        // findClosestMonster always retains a usable target, so refreshing the full
+        // candidate list while it is held cannot change this tick's choice. The
+        // moment it dies, leaves range, or fails LOS, an immediate scan is forced.
+        if (targetId == -1) {
             refreshMonsterCache(level, pos);
+        }
+        scheduleNextTargetScan(now + 1L, pos, interval);
+    }
+
+    private void scheduleNextTargetScan(long fromGameTime, BlockPos pos, int interval) {
+        nextTargetScanTime = nextScheduledTick(fromGameTime, pos, Math.max(1, interval));
+    }
+
+    /** Stable absolute phase: reload order and simultaneous chunk load cannot re-align work. */
+    protected static boolean isPositionScheduledTick(long gameTime, BlockPos pos, int interval) {
+        return TurretTickSchedule.isScheduledTick(gameTime, pos.asLong(), interval);
+    }
+
+    protected static long nextScheduledTick(long gameTime, BlockPos pos, int interval) {
+        return TurretTickSchedule.nextScheduledTick(gameTime, pos.asLong(), interval);
     }
 
     public long getLastFireTime() {
@@ -437,13 +621,19 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         if (level == null || level.isClientSide || !(level instanceof net.minecraft.server.level.ServerLevel serverLevel)) {
             return;
         }
-        net.minecraft.world.level.chunk.LevelChunk chunk = serverLevel.getChunkAt(worldPosition);
-        com.mymod.flux_turret.network.ModNetworking.CHANNEL.send(
-                net.minecraftforge.network.PacketDistributor.TRACKING_CHUNK.with(() -> chunk),
-                new com.mymod.flux_turret.network.TurretFirePacket(
-                        worldPosition, serverLevel.getGameTime(),
-                        targetId, getFireTargetType(), getFireTargetPos(),
-                        impactPos, secondaryEffectPoints, effectFlags, effectStrength));
+        serverLevel.getProfiler().push("flux_turret:fire_packet");
+        try {
+            net.minecraft.world.level.chunk.LevelChunk chunk = serverLevel.getChunkAt(worldPosition);
+            com.mymod.flux_turret.network.ModNetworking.CHANNEL.send(
+                    net.minecraftforge.network.PacketDistributor.TRACKING_CHUNK.with(() -> chunk),
+                    new com.mymod.flux_turret.network.TurretFirePacket(
+                            worldPosition, serverLevel.getGameTime(),
+                            targetId, getFireTargetType(), getFireTargetPos(),
+                            impactPos, secondaryEffectPoints, effectFlags, effectStrength));
+            TurretPerformanceTracker.recordFirePacket(serverLevel);
+        } finally {
+            serverLevel.getProfiler().pop();
+        }
     }
 
     public int getTargetId() {
@@ -510,6 +700,49 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
         return energyStorage.getEnergyStored();
     }
 
+    public int getEnergyCapacity() {
+        return energyStorage.getMaxEnergyStored();
+    }
+
+    public int getOperatingEnergyCost() {
+        return getMinOperatingCost();
+    }
+
+    public double getConfiguredRange() {
+        return getTargetRange();
+    }
+
+    public int getAttackCooldown() {
+        return attackCooldown;
+    }
+
+    public boolean isFiringNow() {
+        return isFiring;
+    }
+
+    protected boolean isStructureValidForDiagnostics() {
+        return true;
+    }
+
+    protected boolean isWarmingUpForDiagnostics() {
+        return false;
+    }
+
+    protected boolean hasTargetForDiagnostics() {
+        return targetId != -1;
+    }
+
+    public TurretStatus getOperationalStatus() {
+        if (!isStructureValidForDiagnostics()) return TurretStatus.STRUCTURE_INVALID;
+        if (level != null && isRedstoneBlocked(level, worldPosition)) return TurretStatus.REDSTONE_STOP;
+        if (energyStorage.getEnergyStored() < getMinOperatingCost()) return TurretStatus.NO_ENERGY;
+        if (isFiring) return TurretStatus.FIRING;
+        if (isWarmingUpForDiagnostics()) return TurretStatus.WARMING_UP;
+        if (!hasTargetForDiagnostics()) return TurretStatus.NO_TARGET;
+        if (attackCooldown > 0) return TurretStatus.COOLDOWN;
+        return TurretStatus.TRACKING;
+    }
+
     /**
      * Server-side: record the world-space point this turret is aiming at, so the
      * client can orient the model even when the target entity isn't loaded on that
@@ -546,6 +779,12 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
     }
 
     public boolean hasUpgrade(TurretUpgradeType type) {
+        int activeMask = type.getSlot() == TurretUpgradeType.Slot.WEAPON
+                ? activeWeaponUpgradeMask : activeUtilityUpgradeMask;
+        return (upgradeMask & type.getMask()) != 0 && (activeMask & type.getMask()) != 0;
+    }
+
+    public boolean hasInstalledUpgrade(TurretUpgradeType type) {
         return (upgradeMask & type.getMask()) != 0;
     }
 
@@ -556,6 +795,52 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
 
     public void installUpgrade(TurretUpgradeType type) {
         upgradeMask |= type.getMask();
+        if (type.getSlot() == TurretUpgradeType.Slot.WEAPON && activeWeaponUpgradeMask == 0) {
+            activeWeaponUpgradeMask = type.getMask();
+        } else if (type.getSlot() == TurretUpgradeType.Slot.UTILITY && activeUtilityUpgradeMask == 0) {
+            activeUtilityUpgradeMask = type.getMask();
+        }
+        onUpgradeLoadoutChanged();
+        markUpdated();
+    }
+
+    protected void onUpgradeLoadoutChanged() {
+    }
+
+    public int getInstalledUpgradeMask() {
+        return upgradeMask;
+    }
+
+    public int getActiveWeaponUpgradeMask() {
+        return activeWeaponUpgradeMask;
+    }
+
+    public int getActiveUtilityUpgradeMask() {
+        return activeUtilityUpgradeMask;
+    }
+
+    public void cycleActiveUpgrade(TurretUpgradeType.Slot slot) {
+        List<TurretUpgradeType> installed = new ArrayList<>();
+        for (TurretUpgradeType type : TurretUpgradeType.values()) {
+            if (type.getSlot() == slot && hasInstalledUpgrade(type) && canInstallUpgrade(type)) {
+                installed.add(type);
+            }
+        }
+        if (installed.isEmpty()) return;
+
+        int currentMask = slot == TurretUpgradeType.Slot.WEAPON
+                ? activeWeaponUpgradeMask : activeUtilityUpgradeMask;
+        int currentIndex = -1;
+        for (int i = 0; i < installed.size(); i++) {
+            if ((currentMask & installed.get(i).getMask()) != 0) {
+                currentIndex = i;
+                break;
+            }
+        }
+        int nextMask = installed.get((currentIndex + 1) % installed.size()).getMask();
+        if (slot == TurretUpgradeType.Slot.WEAPON) activeWeaponUpgradeMask = nextMask;
+        else activeUtilityUpgradeMask = nextMask;
+        onUpgradeLoadoutChanged();
         markUpdated();
     }
 
@@ -576,8 +861,114 @@ public abstract class TurretBlockEntityBase extends BlockEntity implements GeoBl
             }
         }
         upgradeMask = 0;
+        activeWeaponUpgradeMask = 0;
+        activeUtilityUpgradeMask = 0;
+        onUpgradeLoadoutChanged();
         setChanged();
         return removed;
+    }
+
+    private int firstInstalledMask(TurretUpgradeType.Slot slot) {
+        for (TurretUpgradeType type : TurretUpgradeType.values()) {
+            if (type.getSlot() == slot && (upgradeMask & type.getMask()) != 0 && canInstallUpgrade(type)) {
+                return type.getMask();
+            }
+        }
+        return 0;
+    }
+
+    private void normalizeActiveUpgrades() {
+        activeWeaponUpgradeMask = TurretUpgradeLoadout.normalizeActiveMask(activeWeaponUpgradeMask, upgradeMask,
+                TurretUpgradeType.Slot.WEAPON, this::canInstallUpgrade);
+        activeUtilityUpgradeMask = TurretUpgradeLoadout.normalizeActiveMask(activeUtilityUpgradeMask, upgradeMask,
+                TurretUpgradeType.Slot.UTILITY, this::canInstallUpgrade);
+    }
+
+    public TargetingMode getTargetingMode() {
+        return targetingMode;
+    }
+
+    public void cycleTargetingMode() {
+        targetingMode = targetingMode.next();
+        nextTargetScanTime = Long.MIN_VALUE;
+        targetId = -1;
+        monsterCache = List.of();
+        markUpdated();
+    }
+
+    public RedstoneControlMode getRedstoneControlMode() {
+        return redstoneControlMode;
+    }
+
+    public void cycleRedstoneControlMode() {
+        redstoneControlMode = redstoneControlMode.next();
+        markUpdated();
+    }
+
+    public TurretAccessMode getAccessMode() {
+        return accessMode;
+    }
+
+    @Nullable
+    public UUID getOwnerUuid() {
+        return ownerUuid;
+    }
+
+    public String getOwnerName() {
+        return ownerName;
+    }
+
+    public boolean claimIfUnowned(Player player) {
+        if (ownerUuid != null || player instanceof FakePlayer) return false;
+        ownerUuid = player.getUUID();
+        ownerName = player.getScoreboardName();
+        markUpdated();
+        return true;
+    }
+
+    public boolean canPlayerConfigure(Player player) {
+        if (player instanceof FakePlayer) return false;
+        if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                && serverPlayer.hasPermissions(2)) return true;
+        if (ownerUuid == null || ownerUuid.equals(player.getUUID())) return true;
+        if (accessMode == TurretAccessMode.PUBLIC) return true;
+        if (accessMode != TurretAccessMode.TEAM || level == null) return false;
+
+        Player owner = level.getPlayerByUUID(ownerUuid);
+        if (owner != null && player.isAlliedTo(owner)) return true;
+        if (!ownerName.isEmpty() && player.getTeam() != null) {
+            net.minecraft.world.scores.PlayerTeam ownerTeam = level.getScoreboard().getPlayersTeam(ownerName);
+            return ownerTeam != null && ownerTeam == player.getTeam();
+        }
+        return false;
+    }
+
+    public boolean canPlayerChangeAccess(Player player) {
+        return !(player instanceof FakePlayer)
+                && (ownerUuid == null || ownerUuid.equals(player.getUUID())
+                || player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                && serverPlayer.hasPermissions(2));
+    }
+
+    public void cycleAccessMode(Player player) {
+        if (!canPlayerChangeAccess(player)) return;
+        claimIfUnowned(player);
+        accessMode = accessMode.next();
+        markUpdated();
+    }
+
+    /** NBT that is safe to carry with a relocated block item; modules drop separately. */
+    public void savePortableData(CompoundTag tag) {
+        tag.putInt("Energy", energyStorage.getEnergyStored());
+        tag.putInt("TargetingMode", targetingMode.ordinal());
+        tag.putInt("RedstoneControlMode", redstoneControlMode.ordinal());
+        tag.putInt("AccessMode", accessMode.ordinal());
+        if (ownerUuid != null) tag.putUUID("Owner", ownerUuid);
+        if (!ownerName.isEmpty()) tag.putString("OwnerName", ownerName);
+        savePortableDataAdditional(tag);
+    }
+
+    protected void savePortableDataAdditional(CompoundTag tag) {
     }
 
     public boolean canInstallUpgrade(TurretUpgradeType type) {

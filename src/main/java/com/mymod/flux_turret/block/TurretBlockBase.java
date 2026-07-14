@@ -6,6 +6,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
@@ -63,6 +67,10 @@ public abstract class TurretBlockBase extends BaseEntityBlock {
         for (int i = 1; i < heightBlocks; i++) {
             BlockPos above = pos.above(i);
             if (!level.getBlockState(above).isAir() && !level.getBlockState(above).canBeReplaced()) {
+                if (context.getPlayer() != null && level.isClientSide) {
+                    context.getPlayer().displayClientMessage(Component.translatable(
+                            "message.flux_turret.placement_blocked", above.toShortString()), true);
+                }
                 return null;
             }
         }
@@ -91,19 +99,56 @@ public abstract class TurretBlockBase extends BaseEntityBlock {
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         BlockEntity be = level.getBlockEntity(pos);
-        if (be instanceof TurretBlockEntityBase) {
+        if (be instanceof TurretBlockEntityBase turret) {
             InteractionResult result = TurretUpgradeModuleItem.tryHandleInteraction(level, pos, player, hand, be);
             if (result != InteractionResult.PASS) {
                 return result;
+            }
+            if (hand == InteractionHand.MAIN_HAND && player.getItemInHand(hand).isEmpty()
+                    && !player.isShiftKeyDown()) {
+                if (!level.isClientSide && player instanceof ServerPlayer serverPlayer) {
+                    com.mymod.flux_turret.menu.TurretInspectorMenu.open(serverPlayer, turret);
+                }
+                return InteractionResult.sidedSuccess(level.isClientSide);
             }
         }
         return super.use(state, level, pos, player, hand, hit);
     }
 
     @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer,
+                            ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if (!level.isClientSide && placer instanceof Player player
+                && level.getBlockEntity(pos) instanceof TurretBlockEntityBase turret) {
+            turret.claimIfUnowned(player);
+        }
+        if (!level.isClientSide && heightBlocks > 1) {
+            TurretExtensionBlock.placeExtensions(level, pos, heightBlocks);
+        }
+    }
+
+    @Override
+    public java.util.List<ItemStack> getDrops(BlockState state,
+            net.minecraft.world.level.storage.loot.LootParams.Builder builder) {
+        BlockEntity blockEntity = builder.getOptionalParameter(
+                net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY);
+        java.util.List<ItemStack> drops = super.getDrops(state, builder);
+        if (blockEntity instanceof TurretBlockEntityBase turret) {
+            for (ItemStack stack : drops) {
+                if (stack.is(this.asItem())) {
+                    turret.savePortableData(stack.getOrCreateTagElement("BlockEntityTag"));
+                }
+            }
+        }
+        return drops;
+    }
+
+    @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (state.getBlock() != newState.getBlock() && !level.isClientSide) {
             TurretUpgradeModuleItem.dropInstalledModules(level, pos, level.getBlockEntity(pos));
+            if (heightBlocks > 1) TurretExtensionBlock.removeExtensions(level, pos, heightBlocks);
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }

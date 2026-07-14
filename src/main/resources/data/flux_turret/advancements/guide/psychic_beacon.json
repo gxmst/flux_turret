@@ -1,0 +1,37 @@
+{
+  "parent": "flux_turret:guide/turret",
+  "display": {
+    "icon": {
+      "item": "flux_turret:psychic_beacon"
+    },
+    "title": {
+      "translate": "advancement.flux_turret.psychic_beacon.title"
+    },
+    "description": {
+      "translate": "advancement.flux_turret.psychic_beacon.description"
+    },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "has_psychic_beacon": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "flux_turret:psychic_beacon"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_psychic_beacon"
+    ]
+  ]
+}

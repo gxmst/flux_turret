@@ -1,6 +1,7 @@
 package com.mymod.flux_turret.client.renderer;
 
 import com.mymod.flux_turret.block.entity.PrismTowerBlockEntity;
+import com.mymod.flux_turret.client.TurretClientConfig;
 import com.mymod.flux_turret.client.model.PrismTowerModel;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -31,6 +32,11 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
 
         if (be.getLevel() == null)
             return;
+
+        if (!TurretClientConfig.optionalEffectsEnabled()) {
+            be.visualCachedTargetPos = null;
+            return;
+        }
 
         boolean isFiringWindow = be.visualCountdown > 0;
         if (!isFiringWindow) {
@@ -103,8 +109,13 @@ public class PrismTowerRenderer implements BlockEntityRenderer<PrismTowerBlockEn
 
         RenderUtils.drawBeam(matrix, buffer, start, end, startWidth, endWidth, r, g, b, alpha);
 
-        if (!isSupport) {
+        if (!isSupport && !TurretClientConfig.lowQuality()) {
             RenderUtils.drawBeam(matrix, buffer, start, end, startWidth * 0.2f, endWidth * 0.2f, 255, 255, 255, 255);
         }
+    }
+
+    @Override
+    public int getViewDistance() {
+        return 64;
     }
 }

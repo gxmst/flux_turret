@@ -19,6 +19,8 @@ import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraftforge.common.util.FakePlayer;
 
 public class PrismTowerBlock extends TurretBlockBase {
     public PrismTowerBlock(Properties properties) {
@@ -37,45 +39,56 @@ public class PrismTowerBlock extends TurretBlockBase {
             }
 
             if (stack.getItem() instanceof DyeItem dyeItem) {
-                if (!level.isClientSide) {
-                    DyeColor color = dyeItem.getDyeColor();
-                    prism.setDyeColorIndex(color.getId());
+                if (level.isClientSide) return InteractionResult.SUCCESS;
 
-                    if (!player.isCreative()) {
-                        stack.shrink(1);
-                    }
+                DyeColor color = dyeItem.getDyeColor();
+                if (prism.getDyeColorIndex() == color.getId()) return InteractionResult.CONSUME;
+                if (!claimAndCheckAccess(prism, player)) return InteractionResult.CONSUME;
 
-                    prism.setChanged();
-                    level.sendBlockUpdated(pos, state, state, 3);
-
-                    level.playSound(null, pos, SoundEvents.DYE_USE, SoundSource.BLOCKS, 1.0f, 1.0f);
-                } else {
-                    double px = pos.getX() + 0.5;
-                    double py = pos.getY() + 3.125;
-                    double pz = pos.getZ() + 0.5;
-                    for (int i = 0; i < 8; i++) {
-                        level.addParticle(ParticleTypes.HAPPY_VILLAGER,
-                                px + (level.random.nextDouble() - 0.5) * 0.4,
-                                py + (level.random.nextDouble() - 0.5) * 0.4,
-                                pz + (level.random.nextDouble() - 0.5) * 0.4,
-                                0, 0.1, 0);
-                    }
-                }
+                prism.setDyeColorIndex(color.getId());
+                if (!player.isCreative()) stack.shrink(1);
+                finishColorChange((ServerLevel) level, pos, state, prism, true);
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }
 
             if (stack.is(Items.WATER_BUCKET)
                     || (stack.is(Items.POTION) && PotionUtils.getPotion(stack) == Potions.WATER)) {
-                if (!level.isClientSide) {
-                    prism.setDyeColorIndex(-1);
-                    prism.setChanged();
-                    level.sendBlockUpdated(pos, state, state, 3);
-                    level.playSound(null, pos, SoundEvents.BUCKET_EMPTY, SoundSource.BLOCKS, 1.0f, 1.2f);
+                if (level.isClientSide) return InteractionResult.SUCCESS;
+                if (prism.getDyeColorIndex() == -1) return InteractionResult.CONSUME;
+                if (!claimAndCheckAccess(prism, player)) return InteractionResult.CONSUME;
+
+                prism.setDyeColorIndex(-1);
+                if (!player.isCreative()) {
+                    player.setItemInHand(hand, new ItemStack(
+                            stack.is(Items.WATER_BUCKET) ? Items.BUCKET : Items.GLASS_BOTTLE));
                 }
+                finishColorChange((ServerLevel) level, pos, state, prism, false);
                 return InteractionResult.sidedSuccess(level.isClientSide);
             }
         }
 
         return super.use(state, level, pos, player, hand, hit);
+    }
+
+    private static boolean claimAndCheckAccess(PrismTowerBlockEntity prism, Player player) {
+        if (player instanceof FakePlayer) return false;
+        prism.claimIfUnowned(player);
+        if (prism.canPlayerConfigure(player)) return true;
+        player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                "message.flux_turret.turret_access_denied"), true);
+        return false;
+    }
+
+    private static void finishColorChange(ServerLevel level, BlockPos pos, BlockState state,
+                                          PrismTowerBlockEntity prism, boolean dyed) {
+        prism.setChanged();
+        level.sendBlockUpdated(pos, state, state, 3);
+        level.playSound(null, pos, dyed ? SoundEvents.DYE_USE : SoundEvents.BUCKET_EMPTY,
+                SoundSource.BLOCKS, 1.0f, dyed ? 1.0f : 1.2f);
+        if (dyed) {
+            level.sendParticles(ParticleTypes.HAPPY_VILLAGER,
+                    pos.getX() + 0.5, pos.getY() + 3.125, pos.getZ() + 0.5,
+                    8, 0.2, 0.2, 0.2, 0.1);
+        }
     }
 }

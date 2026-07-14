@@ -4,13 +4,18 @@ import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.util.TurretVisualEffects;
+import com.mymod.flux_turret.util.TeslaCrankRules;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.food.FoodData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -22,13 +27,21 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     private static final int ATTACK_COOLDOWN = 24;
     private static final int TARGET_CACHE_INTERVAL = 12;
     private static final int CHAIN_JUMP_LIMIT = 5;
+    private static final int BASE_CHAIN_JUMP_LIMIT = 2;
     private static final double CHAIN_JUMP_RANGE = 9.0;
     private static final double OVERLOAD_BURST_RANGE = 4.5;
+    public static final int MANUAL_CRANK_ENERGY = 500;
+    public static final int MANUAL_CRANK_COOLDOWN_TICKS = 8;
+    private static final float MANUAL_CRANK_SATURATION_COST = 1.0F;
+    private static final int MANUAL_CRANK_FOOD_COST = 1;
+    private static final int MINIMUM_FOOD_AFTER_CRANK = 6;
+    private static final String PLAYER_LAST_CRANK_TAG = "flux_turret:LastManualCrankGameTime";
 
     private int warmupTicks = 0;
     private int overchargeTicks = 0;
     private int manualClicksInWindow = 0;
     private int clickWindowTimer = 0;
+    private long lastManualCrankGameTime = Long.MIN_VALUE;
 
     public TeslaCoilBlockEntity(BlockPos pos, BlockState state) {
         super(ModRegistry.TESLA_COIL_BE.get(), pos, state, TurretConfig.TESLA_CAPACITY.get(), MAX_RECEIVE);
@@ -76,6 +89,16 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     }
 
     @Override
+    protected TargetingMode getAutomaticTargetingMode() {
+        return TargetingMode.CLUSTER;
+    }
+
+    @Override
+    protected boolean isWarmingUpForDiagnostics() {
+        return warmupTicks > 0;
+    }
+
+    @Override
     public boolean canInstallUpgrade(TurretUpgradeType type) {
         return type == TurretUpgradeType.CHAIN_JUMP
                 || type == TurretUpgradeType.EMP_SLOW
@@ -94,8 +117,31 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
         }
     }
 
-    public void performManualCrank() {
-        this.getEnergyStorage().receiveEnergy(500, false);
+    public ManualCrankResult tryManualCrank(ServerPlayer player) {
+        if (level == null || level.isClientSide) return ManualCrankResult.INVALID;
+
+        long gameTime = level.getGameTime();
+        CompoundTag playerData = player.getPersistentData();
+        boolean playerHasCranked = playerData.contains(PLAYER_LAST_CRANK_TAG, net.minecraft.nbt.Tag.TAG_LONG);
+        long playerLastCrank = playerData.getLong(PLAYER_LAST_CRANK_TAG);
+        if (!isCrankCooldownReady(gameTime, lastManualCrankGameTime)
+                || playerHasCranked && !isCrankCooldownReady(gameTime, playerLastCrank)) {
+            return ManualCrankResult.COOLDOWN;
+        }
+
+        // Check before taking food. The actual receive happens immediately after
+        // payment on the same server thread, so a forged packet cannot gain FE
+        // without the resource deduction.
+        if (this.getEnergyStorage().receiveEnergy(MANUAL_CRANK_ENERGY, true) <= 0) {
+            return ManualCrankResult.FULL;
+        }
+        if (!consumeCrankResource(player)) return ManualCrankResult.TOO_HUNGRY;
+
+        int received = this.getEnergyStorage().receiveEnergy(MANUAL_CRANK_ENERGY, false);
+        if (received <= 0) return ManualCrankResult.FULL;
+
+        lastManualCrankGameTime = gameTime;
+        playerData.putLong(PLAYER_LAST_CRANK_TAG, gameTime);
 
         this.manualClicksInWindow++;
         this.clickWindowTimer = 60;
@@ -109,7 +155,57 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
             }
         }
 
+        this.level.playSound(null, worldPosition, SoundEvents.LEVER_CLICK,
+                SoundSource.BLOCKS, 0.7F, 1.5F);
+        this.level.playSound(null, worldPosition, SoundEvents.REDSTONE_TORCH_BURNOUT,
+                SoundSource.BLOCKS, 0.5F, 1.8F);
+        if (this.level instanceof ServerLevel serverLevel) {
+            serverLevel.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    worldPosition.getX() + 0.5D, worldPosition.getY() + 3.0D,
+                    worldPosition.getZ() + 0.5D, 5, 0.3D, 0.75D, 0.3D, 0.02D);
+        }
         markUpdated();
+        return ManualCrankResult.SUCCESS;
+    }
+
+    private static boolean consumeCrankResource(ServerPlayer player) {
+        // Creative is an explicit operator/testing exception. It creates FE at no
+        // hunger cost, but still passes ownership, context and both rate limits.
+        if (player.isCreative()) return true;
+
+        FoodData food = player.getFoodData();
+        if (food.getSaturationLevel() >= MANUAL_CRANK_SATURATION_COST) {
+            food.setSaturation(food.getSaturationLevel() - MANUAL_CRANK_SATURATION_COST);
+            return true;
+        }
+        if (food.getFoodLevel() - MANUAL_CRANK_FOOD_COST >= MINIMUM_FOOD_AFTER_CRANK) {
+            food.setFoodLevel(food.getFoodLevel() - MANUAL_CRANK_FOOD_COST);
+            return true;
+        }
+        return false;
+    }
+
+    static boolean isCrankCooldownReady(long gameTime, long lastCrankGameTime) {
+        return TeslaCrankRules.isCooldownReady(
+                gameTime, lastCrankGameTime, MANUAL_CRANK_COOLDOWN_TICKS);
+    }
+
+    public enum ManualCrankResult {
+        SUCCESS(null),
+        COOLDOWN("message.flux_turret.tesla_crank_cooldown"),
+        FULL("message.flux_turret.tesla_energy_full"),
+        TOO_HUNGRY("message.flux_turret.tesla_too_hungry"),
+        INVALID(null);
+
+        private final String failureTranslationKey;
+
+        ManualCrankResult(String failureTranslationKey) {
+            this.failureTranslationKey = failureTranslationKey;
+        }
+
+        public String getFailureTranslationKey() {
+            return failureTranslationKey;
+        }
     }
 
     public boolean isOvercharged() {
@@ -134,7 +230,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
         }
         if (be.overchargeTicks > 0) {
             be.overchargeTicks--;
-            if (be.overchargeTicks == 0 || level.getGameTime() % 20 == 0) {
+            if (be.overchargeTicks == 0 || isPositionScheduledTick(level.getGameTime(), pos, 20)) {
                 be.setChanged();
             }
         }
@@ -161,7 +257,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
         if (be.attackCooldown > 0) {
             be.attackCooldown -= be.isOvercharged() ? 2 : 1;
             if (be.attackCooldown < 0) be.attackCooldown = 0;
-            if (be.attackCooldown == 0 || level.getGameTime() % 20 == 0) be.setChanged();
+            if (be.attackCooldown == 0 || isPositionScheduledTick(level.getGameTime(), pos, 20)) be.setChanged();
         }
 
         if (hasEnoughEnergy) {
@@ -189,9 +285,10 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                             be.applyEmpSlow(target);
                         }
                         java.util.Map<Mob, Float> secondaryDamage = new java.util.LinkedHashMap<>();
-                        java.util.List<Vec3> chainPoints = be.hasUpgrade(TurretUpgradeType.CHAIN_JUMP)
-                                ? be.chainLightning(level, target, finalDamage * 0.65f, secondaryDamage)
-                                : java.util.List.of();
+                        int chainLimit = be.hasUpgrade(TurretUpgradeType.CHAIN_JUMP)
+                                ? CHAIN_JUMP_LIMIT : BASE_CHAIN_JUMP_LIMIT;
+                        java.util.List<Vec3> chainPoints = be.chainLightning(
+                                level, target, finalDamage * 0.65f, secondaryDamage, chainLimit);
                         boolean overloadBurst = be.hasUpgrade(TurretUpgradeType.OVERLOAD_BURST);
                         if (overloadBurst) {
                             be.overloadBurst(level, target, finalDamage * 0.35f, secondaryDamage);
@@ -236,16 +333,17 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
     }
 
     private java.util.List<Vec3> chainLightning(Level level, Mob primaryTarget, float damage,
-                                                java.util.Map<Mob, Float> secondaryDamage) {
-        java.util.List<Vec3> effectPoints = new java.util.ArrayList<>(CHAIN_JUMP_LIMIT);
+                                                java.util.Map<Mob, Float> secondaryDamage,
+                                                int chainLimit) {
+        java.util.List<Vec3> effectPoints = new java.util.ArrayList<>(chainLimit);
         java.util.Set<Integer> hitIds = new java.util.HashSet<>();
         hitIds.add(primaryTarget.getId());
         Vec3 previous = primaryTarget.position().add(0, primaryTarget.getBbHeight() * 0.5, 0);
 
-        for (int i = 0; i < CHAIN_JUMP_LIMIT; i++) {
+        for (int i = 0; i < chainLimit; i++) {
             Vec3 jumpOrigin = previous;
             AABB chainArea = new AABB(jumpOrigin, jumpOrigin).inflate(CHAIN_JUMP_RANGE);
-            Mob next = level.getEntitiesOfClass(Mob.class, chainArea, monster ->
+            Mob next = trackedEntityQuery(level, Mob.class, chainArea, monster ->
                     !hitIds.contains(monster.getId()) && isEnemyTarget(monster)
                             && monster.position().distanceTo(jumpOrigin) <= CHAIN_JUMP_RANGE
             )
@@ -272,7 +370,7 @@ public class TeslaCoilBlockEntity extends TurretBlockEntityBase {
                                java.util.Map<Mob, Float> secondaryDamage) {
         Vec3 center = primaryTarget.position().add(0, primaryTarget.getBbHeight() * 0.5, 0);
         AABB burstArea = primaryTarget.getBoundingBox().inflate(OVERLOAD_BURST_RANGE);
-        java.util.List<Mob> burstTargets = level.getEntitiesOfClass(Mob.class, burstArea, monster ->
+        java.util.List<Mob> burstTargets = trackedEntityQuery(level, Mob.class, burstArea, monster ->
                 monster != primaryTarget && isEnemyTarget(monster)
                         && monster.position().distanceTo(center) <= OVERLOAD_BURST_RANGE
         );

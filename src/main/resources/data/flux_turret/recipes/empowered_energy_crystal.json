@@ -1,5 +1,5 @@
 {
-    "type": "minecraft:crafting_shaped",
+    "type": "flux_turret:empowered_energy_crystal",
     "pattern": [
         "DRD",
         "CEC",

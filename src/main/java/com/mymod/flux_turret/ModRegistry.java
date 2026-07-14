@@ -23,6 +23,7 @@ import com.mymod.flux_turret.block.GrandCannonBlock;
 import com.mymod.flux_turret.block.PrismTowerBlock;
 import com.mymod.flux_turret.block.PsychicBeaconBlock;
 import com.mymod.flux_turret.block.TeslaCoilBlock;
+import com.mymod.flux_turret.block.TurretExtensionBlock;
 import com.mymod.flux_turret.block.entity.EnergyCrystalBlockEntity;
 import com.mymod.flux_turret.block.entity.GatlingTurretBlockEntity;
 import com.mymod.flux_turret.block.entity.GrandCannonBlockEntity;
@@ -34,6 +35,11 @@ import com.mymod.flux_turret.item.EnergyCrystalItem;
 import com.mymod.flux_turret.item.TurretUpgradeModuleItem;
 import com.mymod.flux_turret.item.TurretUpgradeType;
 import com.mymod.flux_turret.menu.PsychicBeaconMenu;
+import com.mymod.flux_turret.menu.TurretInspectorMenu;
+import com.mymod.flux_turret.recipe.EmpoweredEnergyCrystalRecipe;
+import com.mymod.flux_turret.recipe.FurnaceChargedCrystalRecipe;
+import com.mymod.flux_turret.recipe.RedstoneChargedCrystalRecipe;
+import net.minecraft.world.item.crafting.RecipeSerializer;
 
 public class ModRegistry {
         public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS,
@@ -48,6 +54,18 @@ public class ModRegistry {
                         .create(ForgeRegistries.SOUND_EVENTS, FluxTurretMod.MOD_ID);
         public static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister
                         .create(ForgeRegistries.MENU_TYPES, FluxTurretMod.MOD_ID);
+        public static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS = DeferredRegister
+                        .create(ForgeRegistries.RECIPE_SERIALIZERS, FluxTurretMod.MOD_ID);
+
+        public static final RegistryObject<RecipeSerializer<RedstoneChargedCrystalRecipe>> REDSTONE_CHARGED_CRYSTAL_RECIPE =
+                        RECIPE_SERIALIZERS.register("redstone_charged_crystal",
+                                        RedstoneChargedCrystalRecipe.Serializer::new);
+        public static final RegistryObject<RecipeSerializer<EmpoweredEnergyCrystalRecipe>> EMPOWERED_ENERGY_CRYSTAL_RECIPE =
+                        RECIPE_SERIALIZERS.register("empowered_energy_crystal",
+                                        EmpoweredEnergyCrystalRecipe.Serializer::new);
+        public static final RegistryObject<RecipeSerializer<FurnaceChargedCrystalRecipe>> FURNACE_CHARGED_CRYSTAL_RECIPE =
+                        RECIPE_SERIALIZERS.register("furnace_charged_crystal",
+                                        FurnaceChargedCrystalRecipe.Serializer::new);
 
         public static final RegistryObject<net.minecraft.sounds.SoundEvent> GATLING_SHOOT = SOUNDS.register(
                         "gatling_shoot", () -> net.minecraft.sounds.SoundEvent.createVariableRangeEvent(
@@ -92,6 +110,10 @@ public class ModRegistry {
         public static final RegistryObject<Block> PSYCHIC_BEACON_BLOCK = BLOCKS.register("psychic_beacon",
                         () -> new PsychicBeaconBlock(BlockBehaviour.Properties.of().strength(5.0f).sound(SoundType.METAL)
                                         .noOcclusion().lightLevel(state -> state.getValue(PsychicBeaconBlock.LIT) ? 6 : 0)));
+
+        public static final RegistryObject<Block> TURRET_EXTENSION_BLOCK = BLOCKS.register("turret_extension",
+                        () -> new TurretExtensionBlock(BlockBehaviour.Properties.of().strength(5.0F)
+                                        .noOcclusion().noCollission().noLootTable()));
  
         public static final RegistryObject<Item> PRISM_TOWER_ITEM = ITEMS.register("prism_tower",
                         () -> new BlockItem(PRISM_TOWER_BLOCK.get(), new Item.Properties()));
@@ -181,6 +203,9 @@ public class ModRegistry {
         public static final RegistryObject<MenuType<PsychicBeaconMenu>> PSYCHIC_BEACON_MENU = MENU_TYPES
                         .register("psychic_beacon", () -> IForgeMenuType.create(PsychicBeaconMenu::new));
 
+        public static final RegistryObject<MenuType<TurretInspectorMenu>> TURRET_INSPECTOR_MENU = MENU_TYPES
+                        .register("turret_inspector", () -> IForgeMenuType.create(TurretInspectorMenu::new));
+
         public static final RegistryObject<CreativeModeTab> FLUX_TURRET_TAB = CREATIVE_MODE_TABS.register(
                         "flux_turret_tab",
                         () -> CreativeModeTab.builder()
@@ -192,8 +217,12 @@ public class ModRegistry {
                                                 output.accept(GATLING_TURRET_ITEM.get());
                                                 output.accept(GRAND_CANNON_ITEM.get());
                                                 output.accept(EMPTY_CRYSTAL_ITEM.get());
-                                                output.accept(ENERGY_CRYSTAL_ITEM.get());
-                                                output.accept(EMPOWERED_ENERGY_CRYSTAL_ITEM.get());
+                                                output.accept(EnergyCrystalItem.createChargedStack(
+                                                                ENERGY_CRYSTAL_ITEM.get(),
+                                                                TurretConfig.ENERGY_CRYSTAL_CAPACITY.get()));
+                                                output.accept(EnergyCrystalItem.createChargedStack(
+                                                                EMPOWERED_ENERGY_CRYSTAL_ITEM.get(),
+                                                                TurretConfig.ENERGY_CRYSTAL_CAPACITY.get() * 10));
                                                 output.accept(PSYCHIC_BEACON_ITEM.get());
                                                 output.accept(ARMOR_PIERCING_ROUNDS_MODULE.get());
                                                 output.accept(FIRE_ROUNDS_MODULE.get());
@@ -216,5 +245,6 @@ public class ModRegistry {
                 CREATIVE_MODE_TABS.register(eventBus);
                 SOUNDS.register(eventBus);
                 MENU_TYPES.register(eventBus);
+                RECIPE_SERIALIZERS.register(eventBus);
         }
 }

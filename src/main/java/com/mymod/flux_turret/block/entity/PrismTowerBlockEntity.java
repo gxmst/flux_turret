@@ -3,19 +3,23 @@ package com.mymod.flux_turret.block.entity;
 import com.mymod.flux_turret.ModRegistry;
 import com.mymod.flux_turret.TurretConfig;
 import com.mymod.flux_turret.item.TurretUpgradeType;
+import com.mymod.flux_turret.util.TurretPerformanceTracker;
 import com.mymod.flux_turret.util.TurretVisualEffects;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.PlayerTeam;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -28,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.UUID;
 
 public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private static final int MAX_RECEIVE = 1000;
@@ -77,7 +82,6 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     // Performance optimization: mark support tree as dirty only when needed
     private boolean supportTreeDirty = true;
-    private int supportTreeRecalcCooldown = 0;
 
     private List<PrismTowerBlockEntity> neighborCache = List.of();
     private Level indexedLevel = null;
@@ -255,7 +259,27 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         super.installUpgrade(type);
         cachedEffectiveRange = -1;
         supportTreeDirty = true;
-        supportTreeRecalcCooldown = 0;
+    }
+
+    @Override
+    protected TargetingMode getAutomaticTargetingMode() {
+        return TargetingMode.HIGHEST_HEALTH;
+    }
+
+    @Override
+    protected boolean isWarmingUpForDiagnostics() {
+        return warmupTicks > 0;
+    }
+
+    @Override
+    protected boolean hasTargetForDiagnostics() {
+        return targetId != -1 || targetPos != null || currentDepth >= 0;
+    }
+
+    @Override
+    protected void onUpgradeLoadoutChanged() {
+        cachedEffectiveRange = -1;
+        supportTreeDirty = true;
     }
 
     @Override
@@ -264,7 +288,6 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         if (!removed.isEmpty()) {
             cachedEffectiveRange = -1;
             supportTreeDirty = true;
-            supportTreeRecalcCooldown = 0;
         }
         return removed;
     }
@@ -360,6 +383,11 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         }
     }
 
+    @Override
+    protected void savePortableDataAdditional(CompoundTag tag) {
+        tag.putInt("DyeColorIndex", dyeColorIndex);
+    }
+
     private void clearClientVisualTarget() {
         visualCountdown = 0;
         visualTargetType = 0;
@@ -372,10 +400,9 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     private double getEffectiveScanRange() {
         // Topology changes bypass the periodic cooldown; energy and reservation
         // changes are picked up by the slower periodic refresh in tick().
-        if (supportTreeDirty && supportTreeRecalcCooldown <= 0) {
+        if (supportTreeDirty) {
             cachedPotentialSupports = computePotentialSupportCount();
             supportTreeDirty = false;
-            supportTreeRecalcCooldown = POTENTIAL_SUPPORT_SCAN_INTERVAL;
         }
         return Rules.calculateEffectiveScanRange(
                 TurretConfig.PRISM_RANGE.get(),
@@ -390,14 +417,18 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
     }
 
     private boolean refreshNeighborCache(Level level, BlockPos pos) {
-        registerLoadedTower();
-        List<PrismTowerBlockEntity> refreshedNeighbors = findLinkedTowers(this);
-        if (refreshedNeighbors.equals(neighborCache)) return false;
+        level.getProfiler().push("flux_turret:prism_neighbor_cache");
+        try {
+            registerLoadedTower();
+            List<PrismTowerBlockEntity> refreshedNeighbors = findLinkedTowers(this);
+            if (refreshedNeighbors.equals(neighborCache)) return false;
 
-        neighborCache = refreshedNeighbors;
-        supportTreeDirty = true;
-        supportTreeRecalcCooldown = 0;
-        return true;
+            neighborCache = refreshedNeighbors;
+            supportTreeDirty = true;
+            return true;
+        } finally {
+            level.getProfiler().pop();
+        }
     }
 
     private int computePotentialSupportCount() {
@@ -413,23 +444,31 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
                 hasUpgrade(TurretUpgradeType.REMOTE_SUPPORT));
         if (potentialSupportLimit <= 0) return 0;
 
-        visited.add(getBlockPos());
-        queue.add(new SupportNode(this, 0));
+        int visitedNodes = 0;
+        level.getProfiler().push("flux_turret:prism_potential_bfs");
+        try {
+            visited.add(getBlockPos());
+            queue.add(new SupportNode(this, 0));
 
-        while (!queue.isEmpty() && supportCount < potentialSupportLimit) {
-            SupportNode node = queue.poll();
-            if (node.depth >= MAX_DEPTH) continue;
+            while (!queue.isEmpty() && supportCount < potentialSupportLimit) {
+                SupportNode node = queue.poll();
+                visitedNodes++;
+                if (node.depth >= MAX_DEPTH) continue;
 
-            for (PrismTowerBlockEntity candidate : findLinkedTowers(node.tower)) {
-                if (supportCount >= potentialSupportLimit) break;
-                BlockPos candidatePos = candidate.getBlockPos();
-                if (visited.contains(candidatePos)) continue;
-                if (!isPotentialSupportTower(candidate, minEnergy, gameTime)) continue;
+                for (PrismTowerBlockEntity candidate : findLinkedTowers(node.tower)) {
+                    if (supportCount >= potentialSupportLimit) break;
+                    BlockPos candidatePos = candidate.getBlockPos();
+                    if (visited.contains(candidatePos)) continue;
+                    if (!isPotentialSupportTower(candidate, minEnergy, gameTime)) continue;
 
-                visited.add(candidatePos);
-                queue.add(new SupportNode(candidate, node.depth + 1));
-                supportCount++;
+                    visited.add(candidatePos);
+                    queue.add(new SupportNode(candidate, node.depth + 1));
+                    supportCount++;
+                }
             }
+        } finally {
+            level.getProfiler().pop();
+            TurretPerformanceTracker.recordPrismBfs(level, visitedNodes);
         }
 
         return supportCount;
@@ -481,7 +520,46 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
     private static boolean canLink(PrismTowerBlockEntity a, PrismTowerBlockEntity b) {
         int range = Math.max(a.getNeighborScanRange(), b.getNeighborScanRange());
-        return isWithinSphericalRange(a.getBlockPos(), b.getBlockPos(), range);
+        return canShareNetwork(a, b)
+                && isWithinSphericalRange(a.getBlockPos(), b.getBlockPos(), range);
+    }
+
+    private static boolean canShareNetwork(PrismTowerBlockEntity a, PrismTowerBlockEntity b) {
+        Level level = a.getLevel();
+        if (level == null || level != b.getLevel()) return false;
+        UUID ownerA = a.getOwnerUuid();
+        UUID ownerB = b.getOwnerUuid();
+        if (ownerA == null || ownerB == null) return ownerA == null && ownerB == null;
+        if (ownerA.equals(ownerB)) return true;
+        if (a.getAccessMode() == TurretAccessMode.PRIVATE
+                || b.getAccessMode() == TurretAccessMode.PRIVATE) return false;
+        if (a.getAccessMode() == TurretAccessMode.PUBLIC
+                && b.getAccessMode() == TurretAccessMode.PUBLIC) return true;
+
+        return Rules.canNetworksLink(
+                ownerA, resolveOwnerTeamName(level, a), a.getAccessMode(),
+                ownerB, resolveOwnerTeamName(level, b), b.getAccessMode());
+    }
+
+    private static String resolveOwnerTeamName(Level level, PrismTowerBlockEntity tower) {
+        UUID ownerUuid = tower.getOwnerUuid();
+        if (ownerUuid == null) return "";
+
+        Player onlineOwner = level instanceof ServerLevel serverLevel
+                ? serverLevel.getServer().getPlayerList().getPlayer(ownerUuid)
+                : level.getPlayerByUUID(ownerUuid);
+        if (onlineOwner != null) {
+            // An online UUID is authoritative, including having left the team since
+            // this tower saved its last scoreboard name.
+            return onlineOwner.getTeam() == null ? "" : onlineOwner.getTeam().getName();
+        }
+
+        String ownerName = tower.getOwnerName();
+        if (!ownerName.isEmpty()) {
+            PlayerTeam savedNameTeam = level.getScoreboard().getPlayersTeam(ownerName);
+            if (savedNameTeam != null) return savedNameTeam.getName();
+        }
+        return "";
     }
 
     private static boolean isWithinSphericalRange(BlockPos a, BlockPos b, int radius) {
@@ -531,6 +609,30 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
         static int getOperatingEnergyThreshold(int masterCost, int slaveCost) {
             return Math.min(masterCost, slaveCost);
+        }
+
+        /**
+         * Symmetric opt-in policy for automatic FE sharing. Two legacy unowned
+         * towers remain compatible, but an owned tower never absorbs an unowned
+         * one. Same-owner towers trust each other; otherwise both access modes
+         * must independently permit the relationship.
+         */
+        static boolean canNetworksLink(UUID ownerA, String teamA, TurretAccessMode accessA,
+                                       UUID ownerB, String teamB, TurretAccessMode accessB) {
+            if (ownerA == null || ownerB == null) return ownerA == null && ownerB == null;
+            if (ownerA.equals(ownerB)) return true;
+
+            boolean sameTeam = teamA != null && !teamA.isEmpty() && teamA.equals(teamB);
+            return accessAllowsNetworkPeer(accessA, sameTeam)
+                    && accessAllowsNetworkPeer(accessB, sameTeam);
+        }
+
+        private static boolean accessAllowsNetworkPeer(TurretAccessMode accessMode, boolean sameTeam) {
+            return switch (accessMode) {
+                case PRIVATE -> false;
+                case TEAM -> sameTeam;
+                case PUBLIC -> true;
+            };
         }
 
     }
@@ -591,6 +693,8 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         if (!isOperationalTower(parent, TurretConfig.PRISM_SLAVE_FIRE_COST.get())) return false;
         if (parent.currentDepth < 0 || parent.currentDepth >= MAX_DEPTH) return false;
         if (parent.masterPos == null) return false;
+        if (level == null || !(level.getBlockEntity(parent.masterPos) instanceof PrismTowerBlockEntity master)
+                || !canShareNetwork(master, this)) return false;
         if (parent.masterPos.equals(relayPos)) return false;
         if (!canLink(parent, this)) return false;
         return parent.hasLiveRelayTarget();
@@ -605,27 +709,38 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
         Set<BlockPos> visited = new HashSet<>();
         Queue<SupportNode> queue = new ArrayDeque<>();
-        visited.add(getBlockPos());
-        queue.add(new SupportNode(this, 0));
         int paidSupportCount = 0;
+        int visitedNodes = 0;
+        level.getProfiler().push("flux_turret:prism_transaction_bfs");
+        try {
+            visited.add(getBlockPos());
+            queue.add(new SupportNode(this, 0));
 
-        while (!queue.isEmpty() && paidSupportCount < SUPPORT_SCAN_CAP) {
-            SupportNode node = queue.poll();
-            if (node.depth >= MAX_DEPTH) continue;
+            while (!queue.isEmpty() && paidSupportCount < SUPPORT_SCAN_CAP) {
+                SupportNode node = queue.poll();
+                visitedNodes++;
+                if (node.depth >= MAX_DEPTH) continue;
 
-            for (PrismTowerBlockEntity candidate : findLinkedTowers(node.tower)) {
-                if (paidSupportCount >= SUPPORT_SCAN_CAP) break;
-                BlockPos candidatePos = candidate.getBlockPos();
-                if (!visited.add(candidatePos)) continue;
-                if (!isOperationalTower(candidate, slaveCost)) continue;
-                if (candidate.hasActiveNetworkReservation(gameTime) || candidate.isLiveMaster()) continue;
-                if (!candidate.getEnergyStorage().consumeEnergy(slaveCost)) continue;
+                for (PrismTowerBlockEntity candidate : findLinkedTowers(node.tower)) {
+                    if (paidSupportCount >= SUPPORT_SCAN_CAP) break;
+                    // Pairwise-compatible relays must not bridge a private/team-only
+                    // tower into an unrelated master's transaction.
+                    if (!canShareNetwork(this, candidate)) continue;
+                    BlockPos candidatePos = candidate.getBlockPos();
+                    if (!visited.add(candidatePos)) continue;
+                    if (!isOperationalTower(candidate, slaveCost)) continue;
+                    if (candidate.hasActiveNetworkReservation(gameTime) || candidate.isLiveMaster()) continue;
+                    if (!candidate.getEnergyStorage().consumeEnergy(slaveCost)) continue;
 
-                int depth = node.depth + 1;
-                candidate.activatePaidRelay(level, activeMasterPos, node.tower, depth, gameTime);
-                queue.add(new SupportNode(candidate, depth));
-                paidSupportCount++;
+                    int depth = node.depth + 1;
+                    candidate.activatePaidRelay(level, activeMasterPos, node.tower, depth, gameTime);
+                    queue.add(new SupportNode(candidate, depth));
+                    paidSupportCount++;
+                }
             }
+        } finally {
+            level.getProfiler().pop();
+            TurretPerformanceTracker.recordPrismBfs(level, visitedNodes);
         }
         return paidSupportCount;
     }
@@ -695,19 +810,17 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
 
         be.registerLoadedTower();
         be.flushThrottledUpdate();
-        be.tickCounter++;
 
-        // Periodically refresh energy/reservation-sensitive potential range even
-        // when the cheaper neighbor list has not changed.
-        if (be.supportTreeRecalcCooldown > 0) {
-            be.supportTreeRecalcCooldown--;
-            if (be.supportTreeRecalcCooldown == 0) {
-                be.supportTreeDirty = true;
-                be.cachedEffectiveRange = be.getEffectiveScanRange();
-            }
+        long gameTime = level.getGameTime();
+        // Absolute position-derived phases remain staggered after chunk reloads.
+        // The 100-tick pass refreshes energy/reservation-sensitive support range;
+        // topology changes still bypass it at the next 20-tick neighbor pass.
+        if (isPositionScheduledTick(gameTime, pos, POTENTIAL_SUPPORT_SCAN_INTERVAL)) {
+            be.supportTreeDirty = true;
+            be.cachedEffectiveRange = be.getEffectiveScanRange();
         }
 
-        if (be.tickCounter == 1 || be.tickCounter % NEIGHBOR_CACHE_INTERVAL == 0) {
+        if (isPositionScheduledTick(gameTime, pos, NEIGHBOR_CACHE_INTERVAL)) {
             boolean topologyChanged = be.refreshNeighborCache(level, pos);
             if (topologyChanged || be.cachedEffectiveRange < 0) {
                 be.cachedEffectiveRange = be.getEffectiveScanRange();
@@ -746,10 +859,10 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         boolean coolingDownThisTick = be.attackCooldown > 0;
         if (coolingDownThisTick) {
             be.attackCooldown--;
-            if (be.attackCooldown == 0 || level.getGameTime() % 20 == 0) be.setChanged();
+            if (be.attackCooldown == 0
+                    || isPositionScheduledTick(gameTime, pos, NEIGHBOR_CACHE_INTERVAL)) be.setChanged();
         }
 
-        long gameTime = level.getGameTime();
         if (be.lastShotTargetType != 0 && be.getRemainingFireVisualTicks(be.lastFireTime) == 0) {
             be.clearLastShotSnapshot();
             be.setChanged();
@@ -775,9 +888,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
             be.monsterCache = List.of();
             be.isFiring = false;
         } else if (hasOperatingEnergy) {
-            if (be.tickCounter % TARGET_CACHE_INTERVAL == 0) {
-                be.refreshMonsterCache(level, pos);
-            }
+            be.refreshMonsterCacheOnSchedule(level, pos);
             PrismTowerBlockEntity bestParent = hasSlaveEnergy ? be.findBestRelayParent(pos) : null;
             if (bestParent != null && (be.currentDepth != 0
                     || comparePositions(bestParent.getBlockPos(), pos) < 0)) {
@@ -937,7 +1048,7 @@ public class PrismTowerBlockEntity extends TurretBlockEntityBase {
         Vec3 primaryPos = primaryTarget.position().add(0, primaryTarget.getBbHeight() * 0.5, 0);
         double range = hasUpgrade(TurretUpgradeType.REMOTE_SUPPORT) ? 8.0 : 6.0;
         int maxTargets = hasUpgrade(TurretUpgradeType.REMOTE_SUPPORT) ? 4 : 3;
-        List<Mob> refractionTargets = level.getEntitiesOfClass(Mob.class,
+        List<Mob> refractionTargets = trackedEntityQuery(level, Mob.class,
                         primaryTarget.getBoundingBox().inflate(range), monster ->
                                 monster != primaryTarget && isEnemyTarget(monster)
                                         && monster.position().distanceTo(primaryPos) <= range

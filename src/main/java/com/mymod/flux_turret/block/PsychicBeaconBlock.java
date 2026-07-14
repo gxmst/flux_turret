@@ -15,6 +15,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -76,8 +77,27 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
         level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
         if (!level.isClientSide && placer instanceof Player player && !(player instanceof FakePlayer)
                 && level.getBlockEntity(pos) instanceof PsychicBeaconBlockEntity beacon) {
-            beacon.setOwner(player);
+            beacon.claimIfUnowned(player);
         }
+    }
+
+    @Override
+    public java.util.List<ItemStack> getDrops(BlockState state,
+            net.minecraft.world.level.storage.loot.LootParams.Builder builder) {
+        // The upper half is a visual extension and never owns portable state. If
+        // a player breaks it, playerWillDestroy explicitly drops the lower half.
+        if (state.getValue(HALF) == DoubleBlockHalf.UPPER) return java.util.List.of();
+        BlockEntity blockEntity = builder.getOptionalParameter(
+                net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY);
+        java.util.List<ItemStack> drops = super.getDrops(state, builder);
+        if (blockEntity instanceof PsychicBeaconBlockEntity beacon) {
+            for (ItemStack stack : drops) {
+                if (stack.is(this.asItem())) {
+                    beacon.savePortableData(stack.getOrCreateTagElement("BlockEntityTag"));
+                }
+            }
+        }
+        return drops;
     }
 
     @Nullable
@@ -117,6 +137,23 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
             }
             ItemStack heldItem = player.getItemInHand(hand);
 
+            if (beacon.getBeaconState() == PsychicBeaconBlockEntity.STATE_FAILED
+                    && heldItem.is(Items.AMETHYST_SHARD)) {
+                int repairCost = TurretConfig.PSYCHIC_BEACON_REPAIR_SHARDS.get();
+                if (heldItem.getCount() < repairCost) {
+                    player.displayClientMessage(Component.translatable(
+                                    "message.flux_turret.beacon_repair_requires", repairCost)
+                            .withStyle(net.minecraft.ChatFormatting.YELLOW), true);
+                    return InteractionResult.CONSUME;
+                }
+                if (beacon.repairFailedBeacon()) {
+                    if (!player.getAbilities().instabuild) heldItem.shrink(repairCost);
+                    player.displayClientMessage(Component.translatable("message.flux_turret.beacon_repaired")
+                            .withStyle(net.minecraft.ChatFormatting.GREEN), true);
+                    return InteractionResult.CONSUME;
+                }
+            }
+
             InteractionResult chargeResult = ChargeHelper.tryRedstoneCharge(
                     level, beaconPos, beaconState, player, heldItem, beacon.getEnergyStorage(),
                     beacon::receiveManualEnergy,
@@ -149,6 +186,12 @@ public class PsychicBeaconBlock extends BaseEntityBlock {
         BlockPos otherPos = half == DoubleBlockHalf.LOWER ? pos.above() : pos.below();
         BlockState otherState = level.getBlockState(otherPos);
         if (otherState.is(this) && otherState.getValue(HALF) != half) {
+            if (!level.isClientSide && half == DoubleBlockHalf.UPPER
+                    && !player.getAbilities().instabuild) {
+                BlockEntity lowerBlockEntity = level.getBlockEntity(otherPos);
+                Block.dropResources(otherState, level, otherPos, lowerBlockEntity,
+                        player, player.getMainHandItem());
+            }
             level.setBlock(otherPos, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState(), 35);
         }
         super.playerWillDestroy(level, pos, state, player);

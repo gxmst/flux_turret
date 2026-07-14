@@ -1,6 +1,7 @@
 package com.mymod.flux_turret.client.renderer;
 
 import com.mymod.flux_turret.block.entity.TeslaCoilBlockEntity;
+import com.mymod.flux_turret.client.TurretClientConfig;
 import com.mymod.flux_turret.client.model.TeslaCoilModel;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -16,8 +17,6 @@ import software.bernie.geckolib.renderer.GeoBlockRenderer;
 import software.bernie.geckolib.renderer.layer.AutoGlowingGeoLayer;
 
 public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEntity> {
-    private static final double IDLE_CURRENT_RENDER_DISTANCE_SQR = 36.0D * 36.0D;
-
     private final GeoBlockRenderer<TeslaCoilBlockEntity> geckoRenderer;
 
     public TeslaCoilRenderer(BlockEntityRendererProvider.Context context) {
@@ -33,6 +32,11 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
 
         if (be.getLevel() == null)
             return;
+
+        if (!TurretClientConfig.optionalEffectsEnabled()) {
+            be.visualCachedTargetPos = null;
+            return;
+        }
 
         if (be.isVisuallyPowered() && shouldRenderIdleCurrent(be))
             renderIdleCurrent(be, partialTick, poseStack, bufferSource);
@@ -54,8 +58,15 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
     }
 
     private boolean shouldRenderIdleCurrent(TeslaCoilBlockEntity be) {
+        if (!TurretClientConfig.renderTeslaIdleArcs()) {
+            return false;
+        }
+        double renderDistance = TurretClientConfig.teslaIdleArcDistance();
+        if (renderDistance <= 0.0) {
+            return false;
+        }
         Vec3 cameraPos = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
-        return Vec3.atCenterOf(be.getBlockPos()).distanceToSqr(cameraPos) <= IDLE_CURRENT_RENDER_DISTANCE_SQR;
+        return Vec3.atCenterOf(be.getBlockPos()).distanceToSqr(cameraPos) <= renderDistance * renderDistance;
     }
 
     private void renderIdleCurrent(TeslaCoilBlockEntity be, float partialTick, PoseStack poseStack, MultiBufferSource bufferSource) {
@@ -63,10 +74,12 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
         Matrix4f matrix = poseStack.last().pose();
 
         double time = (be.getLevel().getGameTime() + partialTick) * 0.12;
-        for (int strand = 0; strand < 3; strand++) {
+        boolean lowQuality = TurretClientConfig.lowQuality();
+        int strands = TurretClientConfig.teslaIdleArcStrands();
+        int segments = TurretClientConfig.teslaIdleArcSegments();
+        for (int strand = 0; strand < strands; strand++) {
             double phase = time + strand * Math.PI * 2.0 / 3.0;
             Vec3 previous = null;
-            int segments = 24;
 
             for (int i = 0; i <= segments; i++) {
                 double t = i / (double) segments;
@@ -82,7 +95,7 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
                     float width = strand == 0 ? 0.017f : 0.012f;
                     int alpha = strand == 0 ? 118 : 82;
                     RenderUtils.drawBeam(matrix, buffer, previous, point, width, 118, 180, 255, alpha);
-                    if (strand == 0 && i % 6 == 0) {
+                    if (!lowQuality && strand == 0 && i % 6 == 0) {
                         RenderUtils.drawBeam(matrix, buffer, previous, point, width * 0.45f, 245, 250, 255, 160);
                     }
                 }
@@ -102,7 +115,8 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
 
         long seed = be.getLevel().getGameTime() + be.getBlockPos().asLong();
         Vec3 previous = start;
-        int segments = 7;
+        boolean lowQuality = TurretClientConfig.lowQuality();
+        int segments = lowQuality ? 4 : 7;
 
         for (int i = 1; i <= segments; i++) {
             float t = i / (float) segments;
@@ -115,8 +129,15 @@ public class TeslaCoilRenderer implements BlockEntityRenderer<TeslaCoilBlockEnti
 
             float width = i % 2 == 0 ? 0.07f : 0.045f;
             RenderUtils.drawBeam(matrix, buffer, previous, point, width, 115, 160, 255, 240);
-            RenderUtils.drawBeam(matrix, buffer, previous, point, width * 0.35f, 245, 245, 255, 255);
+            if (!lowQuality) {
+                RenderUtils.drawBeam(matrix, buffer, previous, point, width * 0.35f, 245, 245, 255, 255);
+            }
             previous = point;
         }
+    }
+
+    @Override
+    public int getViewDistance() {
+        return 64;
     }
 }

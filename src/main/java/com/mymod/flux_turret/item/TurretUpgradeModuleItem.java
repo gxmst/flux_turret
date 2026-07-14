@@ -39,6 +39,8 @@ public class TurretUpgradeModuleItem extends Item {
     @Override
     public void appendHoverText(ItemStack stack, @Nullable Level level, List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.translatable(upgradeType.getDescriptionKey()).withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("tooltip.flux_turret.upgrade_module.slot." +
+                upgradeType.getSlot().name().toLowerCase(java.util.Locale.ROOT)).withStyle(ChatFormatting.GOLD));
         tooltip.add(Component.translatable("tooltip.flux_turret.upgrade_module.install").withStyle(ChatFormatting.DARK_AQUA));
     }
 
@@ -56,12 +58,18 @@ public class TurretUpgradeModuleItem extends Item {
             return InteractionResult.SUCCESS;
         }
 
+        turret.claimIfUnowned(player);
+        if (!turret.canPlayerConfigure(player)) {
+            player.displayClientMessage(Component.translatable("message.flux_turret.turret_access_denied"), true);
+            return InteractionResult.CONSUME;
+        }
+
         TurretUpgradeType type = module.getUpgradeType();
         if (!turret.canInstallUpgrade(type)) {
             player.displayClientMessage(Component.translatable("message.flux_turret.upgrade_incompatible"), true);
             return InteractionResult.CONSUME;
         }
-        if (turret.hasUpgrade(type)) {
+        if (turret.hasInstalledUpgrade(type)) {
             player.displayClientMessage(Component.translatable("message.flux_turret.upgrade_already_installed"), true);
             return InteractionResult.CONSUME;
         }
@@ -71,18 +79,17 @@ public class TurretUpgradeModuleItem extends Item {
             stack.shrink(1);
         }
         level.playSound(null, pos, SoundEvents.ANVIL_USE, SoundSource.BLOCKS, 0.65f, 1.45f);
-        player.displayClientMessage(Component.translatable("message.flux_turret.upgrade_installed",
+        player.displayClientMessage(Component.translatable(turret.hasUpgrade(type)
+                        ? "message.flux_turret.upgrade_installed"
+                        : "message.flux_turret.upgrade_installed_inactive",
                 Component.translatable(type.getDescriptionKey())), true);
         return InteractionResult.CONSUME;
     }
 
-    /** Handles the two module gestures shared by every turret block. */
+    /** Handles module installation. Recovery lives in the built-in diagnostics panel. */
     public static InteractionResult tryHandleInteraction(Level level, BlockPos pos, Player player,
                                                          InteractionHand hand, BlockEntity blockEntity) {
-        InteractionResult recovery = tryRecover(level, pos, player, hand, blockEntity);
-        return recovery != InteractionResult.PASS
-                ? recovery
-                : tryInstall(level, pos, player, hand, blockEntity);
+        return tryInstall(level, pos, player, hand, blockEntity);
     }
 
     /**
@@ -92,13 +99,22 @@ public class TurretUpgradeModuleItem extends Item {
      */
     public static InteractionResult tryRecover(Level level, BlockPos pos, Player player,
                                                InteractionHand hand, BlockEntity blockEntity) {
-        if (!player.isShiftKeyDown() || !player.getItemInHand(hand).isEmpty()
-                || !(blockEntity instanceof TurretBlockEntityBase turret)) {
+        if (!player.isShiftKeyDown() || !player.getItemInHand(hand).isEmpty()) {
             return InteractionResult.PASS;
         }
+        return recoverAllForPlayer(level, pos, player, blockEntity);
+    }
 
-        if (level.isClientSide) {
-            return InteractionResult.SUCCESS;
+    /** Server-side diagnostics-panel action. */
+    public static InteractionResult recoverAllForPlayer(Level level, BlockPos pos, Player player,
+                                                        BlockEntity blockEntity) {
+        if (!(blockEntity instanceof TurretBlockEntityBase turret)) return InteractionResult.PASS;
+        if (level.isClientSide) return InteractionResult.SUCCESS;
+
+        turret.claimIfUnowned(player);
+        if (!turret.canPlayerConfigure(player)) {
+            player.displayClientMessage(Component.translatable("message.flux_turret.turret_access_denied"), true);
+            return InteractionResult.CONSUME;
         }
 
         List<TurretUpgradeType> removed = turret.removeAllUpgrades();
@@ -109,9 +125,7 @@ public class TurretUpgradeModuleItem extends Item {
 
         for (TurretUpgradeType type : removed) {
             ItemStack moduleStack = createModuleStack(type);
-            if (!player.addItem(moduleStack)) {
-                player.drop(moduleStack, false);
-            }
+            if (!player.addItem(moduleStack)) player.drop(moduleStack, false);
         }
 
         BlockState state = level.getBlockState(pos);
